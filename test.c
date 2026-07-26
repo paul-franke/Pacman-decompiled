@@ -26,6 +26,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "memmap.h"
 #include "video.h"
@@ -40,10 +43,7 @@
 #include "pacman.6h.h"
 #include "pacman.6j.h"
 
-#include "namcopac.6e.h"
-#include "namcopac.6f.h"
-#include "namcopac.6h.h"
-#include "namcopac.6j.h"
+
 
 CPU_MEMMAP memmap;
 uint8_t input0;
@@ -52,6 +52,18 @@ uint8_t dipSwitches;
 
 int main (int argc, char *argv[])
 {
+#ifdef _WIN32
+    {
+        typedef BOOL (WINAPI *SetDllDirectoryA_t)(LPCSTR);
+        HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+        if (hKernel32) {
+            SetDllDirectoryA_t pSetDllDirectoryA = (SetDllDirectoryA_t)GetProcAddress(hKernel32, "SetDllDirectoryA");
+            if (pSetDllDirectoryA) {
+                pSetDllDirectoryA("libs");
+            }
+        }
+    }
+#endif
     if (argc < 2)
     {
         fprintf (stderr, "Please provide test pattern (1-3)\n");
@@ -61,17 +73,10 @@ int main (int argc, char *argv[])
     memcpy (&charset[0x0000], rom_pacman_5e, 0x1000);
     memcpy (&charset[0x1000], rom_pacman_5f, 0x1000);
 
-    #if 1
     memcpy (&ROM[0x0000], rom_pacman_6e, 0x1000);
     memcpy (&ROM[0x1000], rom_pacman_6f, 0x1000);
     memcpy (&ROM[0x2000], rom_pacman_6h, 0x1000);
     memcpy (&ROM[0x3000], rom_pacman_6j, 0x1000);
-    #else
-    memcpy (&ROM[0x0000], rom_namcopac_6e, 0x1000);
-    memcpy (&ROM[0x1000], rom_namcopac_6f, 0x1000);
-    memcpy (&ROM[0x2000], rom_namcopac_6h, 0x1000);
-    memcpy (&ROM[0x3000], rom_namcopac_6j, 0x1000);
-    #endif
 
     extern bool redrawEnable;
     redrawEnable = false;

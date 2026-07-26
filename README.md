@@ -1,85 +1,78 @@
-pacman in C
-===========
-This is a C translation of original pac-man ROM code.  Original code remains as
-comments.  Assembly that has been translated is boxed off with //---- 
+Pacman in C (Windows Port)
+=========================
 
-This project does not include original ROM files although they are required.
-You will need to download them from somewhere else.  The code itself is a
-derived work from the original (a translation).
+This is a C translation of the original Pac-Man arcade ROM code, featuring a fully functional native Windows port. The original code remains as comments in the source files, and translated assembly is boxed off.
 
-The main file is pacman.c.  Others are just support.  There are a few comments
-in the code and there is a blog [here][1]
-that contains
-more details.
+The original project is created by **mburkley** and is available at: https://github.com/mburkley/pacman-c.
+Special thanks to **mburkley** for his great preliminary work, on which this Windows port is heavily based!
+
+This project does not include the original ROM files, although they are required. You must obtain the ROM files yourself. Once you have them, building and running the game is automated.
+
+Setup & Build Pipeline
+----------------------
+No manual installation steps required. 
+
+Build the executable by running the following scripts: 
+1. **`clean.bat`** (Cleanup Step)
+   * Deletes all compiled object files, executables, generated ROM headers, downloaded libraries, the local compiler, and the game subdirectory, restoring the repository to a clean state.
+
+2. **`install.bat`** (Installation & Setup Step)
+   * Automatically installs and sets up a local, portable **Tiny C Compiler (TCC)** (only ~2MB total).
+   * Installs copies of the required FreeGLUT libraries and standard OpenGL headers.
+   * Runs an automatic patching utility (`patch_headers.ps1`) to wrap compiler-specific directives.
+   * Creates a `game/` subdirectory and copies the runtime `freeglut.dll` there. Needed for proper behavior.
+   * Parses the raw ROM files inside the `rom/` directory and converts them into C arrays inside `include/roms/`.
+
+3. **`build.bat`** (Compilation Step)
+   * builds the executable `game\pacman.exe`.
+  
+
+Required ROM Files
+------------------
+You must obtain the original Pac-Man ROM files and place them in the **`rom/`** directory. The following files must be present:
+* `pacman.5e` - Ghost graphics
+* `pacman.5f` - Pacman graphics
+* `pacman.6e` - CPU code 
+* `pacman.6f` - CPU code 
+* `pacman.6h` - CPU code 
+* `pacman.6j` - CPU code 
+* `82s123.7f` - Color palette PROM
+* `82s126.4a` - Color lookup table PROM
+* `82s126.1m` - Sound waveform 1
+* `82s126.3m` - Sound waveform 2
+
+
+Running & Logging
+-----------------
+* **Running the Game**:
+  It is best to run `pacman.exe` from the command line, though it can also be run directly from Windows Explorer (double-clicking `game\pacman.exe`).
+
+* **Frame Rate Control (`-f` flag)**:
+  By default, the game runs at 60 FPS. You can override the frames per second by passing the `-f` flag followed by an integer from 1 to 60.
+  Example (run at 30 FPS):
+  ```cmd
+  game\pacman.exe -f 30
+  ```
+
+* **Logging Control (`-v` flag)**:
+  By default, the game runs in silent mode. If you want to enable debug logs and error messages, run the game with the `-v` flag:
+  ```cmd
+  game\pacman.exe -v
+  ```
+
+Keys (Windows)
+--------------
+* **Arrow Keys** (or NumPad) = Move Up, Down, Left, Right
+* **5** = Insert Coin
+* **1** = 1 Player Start
+* **2** = 2 Player Start
+* **P** = Pause CPU
+* **D** = Toggle Target Vector overlays (visualizing target tiles for Blinky, Pinky, Inky, Clyde, and Pac-Man)
 
 Goals
 -----
-Create a full functional working version of pacman that behaves identically to
-the original (patterns work as they would on mame, etc) but the code is compiled
-C instead of emulated Z80.
+Create a fully functional working version of Pac-Man that behaves identically to the original (patterns work exactly as they would on MAME) but is compiled C code instead of emulated Z80.
 
-Why?  To gain understanding of the original game mostly.  Being able to add
-printfs has been very useful.  Also I can use gdb to examine and modify RAM
-locations.
-
-build
------
-Builds under debian / ubuntu Linux.  Should build under other distros too but
-hasn't been tested.  Uses the "glut" and "pulse[-simple]" libraries to provide video
-using openGL and audio using pulseaudio.
-
-Keys
------
-Keys read directly from /dev/input devices.  The current user needs to be in the
-"input" group.  The keys are:
-* Numeric keypad = up,down,left,right
-* 5 = add coin
-* 1 = 1 player start
-* 2 = 2 player start
-* P = pause
-* D = draw vectors showing ghost and pacman targets
-
-Notes
------
-In general, I have directly translated from the assembler even when it could be
-done more efficiently with a new implementation.
-
-The memory map is identical to the original.  Original ROMs are required for
-code and bitmaps.  The original ROM code contains data structures for messages,
-difficulty tables and so on.  It is also used to generate random numbers so
-unfortunately needs to be included in full.  Convert the ROMs to header files
-using xdd.
-
-Functions are named followed by an underscore and their ROM address.  Data
-structures similarly.  Functions that have a yet to be determined function are
-just called func_xxxx().
-
-The original ROM code uses lots of jumps to move around, often jumping into
-another function.  I've changed these to function calls followed by return
-wherever possible.  Some gotos still exist however where it would be too
-convoluted to work around them.
-
-When conforming to the original creates excessive code, I have created shortcut
-C code.  For example a nested loop to fill 0x400 bytes of screen data may be a
-single loop instead of two nested loops.
-
-tablelookup and other support routines such as setMemory and fetchOffset are
-often just replaced with an array index.
-
-Tailcalls.  Many functions execute a jump to the tail end of another
-function that updates a state or other operation.  In many cases I've just
-inserted the action into the caller code instead of creating a function.
-
-bugs
-----
-
-Still a few.  See bugs
-
-Screenshots
------------
-![screen1](screenshots/Screenshot_2024-04-25_08-46-43.png)
-![screen2](screenshots/Screenshot_2024-04-25_08-47-23.png)
-![screen3](screenshots/Screenshot_2024-04-25_08-50-21.png)
-![screen4](screenshots/Screenshot_2024-04-25_08-51-13.png)
+[Original blog containing more details][1]
 
 [1]: https://pacmanc.blogspot.com/

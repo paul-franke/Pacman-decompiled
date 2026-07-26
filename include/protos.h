@@ -282,7 +282,7 @@ void drawScore_2abe (uint16_t screenLoc, uint8_t *score, int blanks);
 int drawDigit_2ace(uint16_t *screenLoc, int digit, int blanks);
 void clearScores_2ae0 ();
 uint8_t* getPlayerScorePtr_2b0b (void);
-uint16_t scoreTable_2b17[];
+extern uint16_t scoreTable_2b17[];
 void extraLife_2b33 (uint8_t *score);
 uint16_t displayLives_2b4a (int lives);
 void bottomTextColourAndDisplayLives_2b6a (int unused);

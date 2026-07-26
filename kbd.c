@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef _WIN32
 
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -247,4 +248,15 @@ void keyboardInit (void)
     }
 
 }
+
+#else
+
+#include "kbd.h"
+
+void keyboardInit (void)
+{
+    // Keyboard inputs are handled via GLUT callbacks on Windows
+}
+
+#endif
 

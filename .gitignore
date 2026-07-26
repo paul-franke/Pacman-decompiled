@@ -1,0 +1,45 @@
+# Compiled object files and libraries
+*.o
+*.obj
+*.dll
+*.lib
+*.a
+
+# Build directories and executables
+obj/
+game/
+pacman.exe
+test.exe
+pacman
+test
+
+compiler/
+compiler/*
+include/GL/
+include/GL/*
+include/roms/
+include/roms/*
+libs/
+libs/*
+
+# ROM files contents
+rom/*
+roms/*
+
+# Temporary test files
+test_macro.c
+tcc_test.c
+tcc_test/
+tcc.zip
+freeglut-MSVC.zip
+freeglut-MSVC/
+w64devkit.zip
+w64devkit_tmp/
+llvm.tar.xz
+clang+llvm-*/
+find_gl.h.py
+test_macro.obj
+
+# Python caches (if any)
+__pycache__/
+*.pyc

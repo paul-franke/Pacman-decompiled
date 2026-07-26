@@ -11634,7 +11634,7 @@ void clydeScatterOrChase_27f1 (int param)
         //-------------------------------
         if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME)
         {
-            random:
+            random: ;
             //-------------------------------
             // 2800  2a104d    ld      hl,(#4d10)
             // 2803  3a2f4d    ld      a,(#4d2f)

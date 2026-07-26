@@ -21,28 +21,19 @@ pacman.6e \
 pacman.6f \
 pacman.6h \
 pacman.6j \
-namcopac.6e \
-namcopac.6f \
-namcopac.6h \
-namcopac.6j \
 82s123.7f \
 82s126.4a \
 82s126.1m \
 82s126.3m
 
 FILES=$(patsubst %,rom/%,$(ROMS))
-HDRS=$(patsubst %,%.h,$(ROMS))
+HDRS=$(patsubst %,include/roms/%.h,$(ROMS))
 
-# Header files containing ROM data
-# ROM_HDRS = (patsubst roms/%, %.h, $(ROMS))
+include/roms/%.h: rom/%
+	@mkdir -p include/roms
+	xxd -i $< > $@
 
-# $(ROM_HDRS): %: %
-# 	@xxd -i $< > $@
-
-$(HDRS) : %:
-	xxd -i rom/$(subst .h,,$@) > $@
-
-CFLAGS=-Wall -ggdb3 -Wincompatible-pointer-types
+CFLAGS=-Wall -ggdb3 -Wincompatible-pointer-types -Iinclude -Iinclude/roms
 
 pacman: $(OBJECTS) harness.o
 	@echo "\t[LD] $@..."
@@ -55,3 +46,11 @@ test: $(OBJECTS) test.o
 %.o: %.c $(HDRS)
 	@echo "\t[CC] $<..."
 	@$(CC) -c $(CFLAGS) $< -o $@
+
+clean:
+	@echo "Cleaning build artifacts, ROM headers, and libraries..."
+	rm -f $(OBJECTS) harness.o test.o pacman test
+	rm -rf include/roms
+	rm -f freeglut.dll libs/freeglut.dll libs/freeglut.lib libs/glut32.lib
+	rm -rf include/GL
+	rm -rf compiler

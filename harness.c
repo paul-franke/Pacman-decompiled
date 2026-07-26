@@ -40,10 +40,7 @@
 #include "pacman.6h.h"
 #include "pacman.6j.h"
 
-#include "namcopac.6e.h"
-#include "namcopac.6f.h"
-#include "namcopac.6h.h"
-#include "namcopac.6j.h"
+
 
 CPU_MEMMAP memmap;
 uint8_t input0;
@@ -51,22 +48,39 @@ uint8_t input1;
 uint8_t dipSwitches;
 bool paused;
 
+#ifdef _WIN32
+#include <windows.h>
+
+DWORD WINAPI cpuThreadFunc(LPVOID lpParam)
+{
+    (void)lpParam;
+    void reset_0000 (void);
+    reset_0000 ();
+    return 0;
+}
+#endif
+
 int main (int argc, char *argv[])
 {
+#ifdef _WIN32
+    {
+        typedef BOOL (WINAPI *SetDllDirectoryA_t)(LPCSTR);
+        HMODULE hKernel32 = GetModuleHandleA("kernel32.dll");
+        if (hKernel32) {
+            SetDllDirectoryA_t pSetDllDirectoryA = (SetDllDirectoryA_t)GetProcAddress(hKernel32, "SetDllDirectoryA");
+            if (pSetDllDirectoryA) {
+                pSetDllDirectoryA("libs");
+            }
+        }
+    }
+#endif
     memcpy (&charset[0x0000], rom_pacman_5e, 0x1000);
     memcpy (&charset[0x1000], rom_pacman_5f, 0x1000);
 
-    #if 1
     memcpy (&ROM[0x0000], rom_pacman_6e, 0x1000);
     memcpy (&ROM[0x1000], rom_pacman_6f, 0x1000);
     memcpy (&ROM[0x2000], rom_pacman_6h, 0x1000);
     memcpy (&ROM[0x3000], rom_pacman_6j, 0x1000);
-    #else
-    memcpy (&ROM[0x0000], rom_namcopac_6e, 0x1000);
-    memcpy (&ROM[0x1000], rom_namcopac_6f, 0x1000);
-    memcpy (&ROM[0x2000], rom_namcopac_6h, 0x1000);
-    memcpy (&ROM[0x3000], rom_namcopac_6j, 0x1000);
-    #endif
 
     /*  Input switches are active low */
     IO_INPUT0 = 0xef;
@@ -77,15 +91,53 @@ int main (int argc, char *argv[])
     // DIP_INPUT = 0xff; default, 5 lives, 2 coins per game, etc
     DIP_INPUT = 0x49; 
     DIP_INPUT |= 0x80; // remove for alt names
-    printf ("IN0=%02x\n", IO_INPUT0);
-    if (argc > 1)
-        DIP_INPUT = atoi (argv[1]);
+    extern double target_fps;
+    bool verbose = false;
+    int arg_idx = 1;
+    while (arg_idx < argc) {
+        if (strcmp(argv[arg_idx], "-f") == 0) {
+            if (arg_idx + 1 < argc) {
+                int val = atoi(argv[arg_idx + 1]);
+                if (val >= 1 && val <= 60) {
+                    target_fps = (double)val;
+                } else {
+                    fprintf(stderr, "Error: -f FPS value must be between 1 and 60. Got: %d\n", val);
+                    exit(1);
+                }
+                arg_idx += 2;
+            } else {
+                fprintf(stderr, "Error: -f flag requires a value.\n");
+                exit(1);
+            }
+        } else if (strcmp(argv[arg_idx], "-v") == 0) {
+            verbose = true;
+            arg_idx++;
+        } else {
+            DIP_INPUT = (uint8_t)atoi(argv[arg_idx]);
+            arg_idx++;
+        }
+    }
+
+    if (!verbose) {
+        #ifdef _WIN32
+        freopen("NUL", "w", stdout);
+        freopen("NUL", "w", stderr);
+        #else
+        freopen("/dev/null", "w", stdout);
+        freopen("/dev/null", "w", stderr);
+        #endif
+    }
 
     videoInit (224, 288, 3); // scale is 3 x 3
     soundInit ();
     keyboardInit ();
 
+#ifdef _WIN32
+    CreateThread(NULL, 0, cpuThreadFunc, NULL, 0, NULL);
+    videoStartGlutLoop();
+#else
     void reset_0000 (void);
     reset_0000 ();
+#endif
 }
 

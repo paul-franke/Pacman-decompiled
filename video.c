@@ -30,7 +30,9 @@
 #include <math.h>
 #include <unistd.h>
 #include <stdbool.h>
+#ifndef _WIN32
 #include <pthread.h>
+#endif
 #include <GL/glut.h>
 #include <GL/gl.h>
 
@@ -301,7 +303,9 @@ static void displayFunc (void)
 }
 
 static bool videoThreadRunning = false;
+#ifndef _WIN32
 static pthread_t thVideoThread;
+#endif
 
 static void *videoThread (void *arg)
 {
@@ -331,6 +335,19 @@ static void *videoThread (void *arg)
 
     glutDisplayFunc(displayFunc);
     glutIdleFunc(glutPostRedisplay); // keep redrawing
+
+#ifdef _WIN32
+    void glutKeyboardDown(unsigned char key, int x, int y);
+    void glutKeyboardUp(unsigned char key, int x, int y);
+    void glutSpecialDown(int key, int x, int y);
+    void glutSpecialUp(int key, int x, int y);
+
+    glutKeyboardFunc(glutKeyboardDown);
+    glutKeyboardUpFunc(glutKeyboardUp);
+    glutSpecialFunc(glutSpecialDown);
+    glutSpecialUpFunc(glutSpecialUp);
+#endif
+
     glutMainLoop(); 
 
     return NULL;
@@ -356,11 +373,62 @@ void videoInit (int xsize, int ysize, int scale)
 
     printf ("FB size is %d x %d\n", frameBufferXSize, frameBufferYSize);
 
+#ifndef _WIN32
     videoThreadRunning = true;
     if (pthread_create (&thVideoThread, NULL, videoThread, NULL) != 0)
     {
         fprintf (stderr, "!! thread\n");
         exit (1);
     }
+#endif
 }
+
+#ifdef _WIN32
+void videoStartGlutLoop(void)
+{
+    videoThread(NULL);
+}
+
+extern bool cpuPaused;
+
+void glutKeyboardDown(unsigned char key, int x, int y) {
+    (void)x; (void)y;
+    if (key == '5') input0 &= ~0x20;
+    else if (key == '1') input1 &= ~0x20;
+    else if (key == '2') input1 &= ~0x40;
+    else if (key == 'p' || key == 'P') cpuPaused = !cpuPaused;
+    else if (key == 'd' || key == 'D') drawTargetEnable = !drawTargetEnable;
+    else if (key == '8') input0 &= ~0x01;
+    else if (key == '4') input0 &= ~0x02;
+    else if (key == '6') input0 &= ~0x04;
+    else if (key == '2') input0 &= ~0x08;
+}
+
+void glutKeyboardUp(unsigned char key, int x, int y) {
+    (void)x; (void)y;
+    if (key == '5') input0 |= 0x20;
+    else if (key == '1') input1 |= 0x20;
+    else if (key == '2') input1 |= 0x40;
+    else if (key == '8') input0 |= 0x01;
+    else if (key == '4') input0 |= 0x02;
+    else if (key == '6') input0 |= 0x04;
+    else if (key == '2') input0 |= 0x08;
+}
+
+void glutSpecialDown(int key, int x, int y) {
+    (void)x; (void)y;
+    if (key == GLUT_KEY_UP) input0 &= ~0x01;
+    else if (key == GLUT_KEY_LEFT) input0 &= ~0x02;
+    else if (key == GLUT_KEY_RIGHT) input0 &= ~0x04;
+    else if (key == GLUT_KEY_DOWN) input0 &= ~0x08;
+}
+
+void glutSpecialUp(int key, int x, int y) {
+    (void)x; (void)y;
+    if (key == GLUT_KEY_UP) input0 |= 0x01;
+    else if (key == GLUT_KEY_LEFT) input0 |= 0x02;
+    else if (key == GLUT_KEY_RIGHT) input0 |= 0x04;
+    else if (key == GLUT_KEY_DOWN) input0 |= 0x08;
+}
+#endif
 

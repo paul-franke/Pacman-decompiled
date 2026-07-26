@@ -25,10 +25,20 @@
 #include <math.h>
 #include <unistd.h>
 #include <stdlib.h>
+
+#ifndef _WIN32
 #include <pthread.h>
 #include <pulse/simple.h>
+#else
+#include <windows.h>
+#include <mmsystem.h>
+#ifdef _MSC_VER
+#pragma comment(lib, "winmm.lib")
+#endif
+#endif
 
 #include "memmap.h"
+#include "sound.h"
 
 /* TODO is audio rom 1 needed?  Highest waveform (32B) I've seen is 6 */
 
@@ -37,7 +47,7 @@
 
 uint8_t soundRom[0x200];
 
-/*  The frequency at which we are playing samples to pulse audio */
+/*  The frequency at which we are playing samples */
 #define AUDIO_FREQUENCY 96000
 
 /* Generate 10ms of samples at a time */
@@ -88,6 +98,10 @@ static short generateTone (uint8_t *freqCountPtr, uint8_t *freqPtr, uint8_t volu
     return sample; //  * 72 - 8192;
 }
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #define TEST_SMP 1600 // generate a 60hz wave @ 96kHz
 #define TEST_AMP 32 // 32 / 32768 = 1/2^10 = -30dB 
 static short testWave (void)
@@ -114,6 +128,8 @@ static short generateSample (void)
 
     return sample;
 }
+
+#ifndef _WIN32
 
 /*  Every 10 msec, generate data to feed pulse audio device using a combination
  *  from currently active tone and noise generators.
@@ -190,3 +206,109 @@ void soundClose (void)
     pthread_join (audioThread, NULL);
 }
 
+#else
+
+/* Windows waveOut Driver Implementation */
+#define BUFFER_COUNT 4
+
+static HWAVEOUT hWaveOut = NULL;
+static WAVEHDR waveHeaders[BUFFER_COUNT];
+static int16_t *waveBuffers[BUFFER_COUNT] = {NULL};
+static int currentBufferIndex = 0;
+static HANDLE audioEvent = NULL;
+static HANDLE hAudioThread = NULL;
+static bool audioThreadRunning = false;
+
+static DWORD WINAPI winAudioThread(LPVOID lpParam)
+{
+    (void)lpParam;
+    while (audioThreadRunning)
+    {
+        WAVEHDR *hdr = &waveHeaders[currentBufferIndex];
+        
+        while (!(hdr->dwFlags & WHDR_DONE) && audioThreadRunning)
+        {
+            WaitForSingleObject(audioEvent, 10);
+        }
+        
+        if (!audioThreadRunning) break;
+        
+        int16_t *buf = waveBuffers[currentBufferIndex];
+        for (int i = 0; i < SAMPLE_COUNT; i++)
+        {
+            buf[i] = generateSample();
+        }
+        
+        waveOutUnprepareHeader(hWaveOut, hdr, sizeof(WAVEHDR));
+        waveOutPrepareHeader(hWaveOut, hdr, sizeof(WAVEHDR));
+        waveOutWrite(hWaveOut, hdr, sizeof(WAVEHDR));
+        
+        currentBufferIndex = (currentBufferIndex + 1) % BUFFER_COUNT;
+    }
+    return 0;
+}
+
+void soundInit (void)
+{
+    memcpy (&soundRom[0x0000], rom_82s126_1m, 0x100);
+    memcpy (&soundRom[0x0100], rom_82s126_3m, 0x100);
+
+    WAVEFORMATEX wfx;
+    wfx.wFormatTag = WAVE_FORMAT_PCM;
+    wfx.nChannels = 1;
+    wfx.nSamplesPerSec = AUDIO_FREQUENCY;
+    wfx.wBitsPerSample = 16;
+    wfx.nBlockAlign = 2;
+    wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+    wfx.cbSize = 0;
+
+    audioEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (waveOutOpen(&hWaveOut, WAVE_MAPPER, &wfx, (DWORD_PTR)audioEvent, 0, CALLBACK_EVENT) != MMSYSERR_NOERROR)
+    {
+        fprintf(stderr, "waveOutOpen failed\n");
+        return;
+    }
+
+    for (int i = 0; i < BUFFER_COUNT; i++)
+    {
+        waveBuffers[i] = calloc(SAMPLE_COUNT, sizeof(int16_t));
+        memset(&waveHeaders[i], 0, sizeof(WAVEHDR));
+        waveHeaders[i].lpData = (LPSTR)waveBuffers[i];
+        waveHeaders[i].dwBufferLength = SAMPLE_COUNT * sizeof(int16_t);
+        waveOutPrepareHeader(hWaveOut, &waveHeaders[i], sizeof(WAVEHDR));
+        waveHeaders[i].dwFlags |= WHDR_DONE;
+    }
+
+    audioThreadRunning = true;
+    hAudioThread = CreateThread(NULL, 0, winAudioThread, NULL, 0, NULL);
+}
+
+void soundClose (void)
+{
+    if (audioThreadRunning)
+    {
+        audioThreadRunning = false;
+        if (audioEvent) SetEvent(audioEvent);
+        if (hAudioThread)
+        {
+            WaitForSingleObject(hAudioThread, INFINITE);
+            CloseHandle(hAudioThread);
+        }
+        if (hWaveOut)
+        {
+            waveOutReset(hWaveOut);
+            for (int i = 0; i < BUFFER_COUNT; i++)
+            {
+                if (waveBuffers[i])
+                {
+                    waveOutUnprepareHeader(hWaveOut, &waveHeaders[i], sizeof(WAVEHDR));
+                    free(waveBuffers[i]);
+                }
+            }
+            waveOutClose(hWaveOut);
+        }
+        if (audioEvent) CloseHandle(audioEvent);
+    }
+}
+
+#endif

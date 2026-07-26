@@ -22,6 +22,10 @@
  * Some support functions for Z80 CPU
  */
 
+#ifdef __TINYC__
+#define _mm_pause()
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -47,12 +51,52 @@ void interruptMode (int mode)
 {
 }
 
+#ifdef _WIN32
+#include <windows.h>
+static void limit_frame_rate(double target_fps)
+{
+    static LARGE_INTEGER frequency;
+    static LARGE_INTEGER last_time;
+    static bool first = true;
+    
+    if (first) {
+        QueryPerformanceFrequency(&frequency);
+        QueryPerformanceCounter(&last_time);
+        first = false;
+        return;
+    }
+    
+    double target_frame_time = 1.0 / target_fps;
+    LARGE_INTEGER current_time;
+    while (1) {
+        QueryPerformanceCounter(&current_time);
+        double elapsed = (double)(current_time.QuadPart - last_time.QuadPart) / frequency.QuadPart;
+        double remaining = target_frame_time - elapsed;
+        if (remaining <= 0.0) {
+            break;
+        }
+        if (remaining > 0.001) {
+            Sleep((DWORD)(remaining * 1000.0 - 0.5));
+        } else {
+            YieldProcessor();
+        }
+    }
+    QueryPerformanceCounter(&last_time);
+}
+#endif
+
+double target_fps = 60.0;
+
 void interruptHalt (void)
 {
     static bool inInterrupt;
 
     /*  TODO pend on cond var set by video or use a timer */
-    usleep(16667); // 60 Hz
+#ifdef _WIN32
+    limit_frame_rate(target_fps);
+#else
+    usleep((useconds_t)(1000000.0 / target_fps));
+#endif
 
     if (!inInterrupt && !cpuPaused && intVector)
     {
@@ -61,6 +105,7 @@ void interruptHalt (void)
     }
     inInterrupt = false;
 
+#if 0
     printf ("sprite-at: ");
     for (int i = 0; i < 16; i++)
         printf ("%02x ", SPRITEATTRIB[i]);
@@ -92,6 +137,7 @@ void interruptHalt (void)
             BLINKY_TILE2.x,
             BLINKY_TILE2.y);
     printf ("\n\n=====\n");
+#endif
 }
 
 void interruptVector (void (*func) (void))
