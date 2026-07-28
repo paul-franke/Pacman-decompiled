@@ -241,87 +241,80 @@ For each sprite index `i` (from 0 to 7):
 
 ---
 
-## 9. CPU Working RAM Variables Map (`0x4800 - 0x4FEF`)
+## 9. Cooperative Multi-Tasking Architecture (ISR & Non-ISR Task Queues)
 
-The CPU Working RAM occupies `2,032` bytes. Decompilation of the ROM discloses the locations of key variables that control the game state, positioning, speeds, states, and scores:
+Pac-Man features two separate multitasking task queues: one driven by VBlank interrupts (timed events), and one driven by the main game loop (sequenced events).
 
-### General & Timer Variables
-- **`0x4C80 - 0x4C81`:** `TASK_LIST_END` (2-byte Z80 address pointer)
-- **`0x4C82 - 0x4C83`:** `TASK_LIST_BEGIN` (2-byte Z80 address pointer)
-- **`0x4C84 - 0x4C85`:** `SOUND_COUNTER`
-- **`0x4C86 - 0x4C87`:** `TIMER_SIXTIETHS` (2-byte tick counter)
-- **`0x4C87`:** `TIMER_SECONDS` (1 byte)
-- **`0x4C88`:** `TIMER_MINUTES` (1 byte)
-- **`0x4C89`:** `TIMER_HOURS` (1 byte)
-- **`0x4C8B`:** `RND_NUM_GEN1` (Pseudo-random number generator register 1)
-- **`0x4C8C`:** `RND_NUM_GEN2` (Pseudo-random number generator register 2)
-- **`0x4C90 - 0x4CBF`:** `ISR_TASKS` (Interrupt tasks list, 16 entries of 3 bytes each)
-- **`0x4CC0 - 0x4CDF`:** `NONISR_TASKS` (Non-interrupt tasks list, 16 entries of 2 bytes each)
+### A. The Timekeeper Clock Array (`TIMER_SIXTIETHS`)
+At address `0x4C86`, the game maintains a **4-byte Binary Coded Decimal (BCD)** clock:
+* **Byte 0:** 60ths of a second (counts $0 \rightarrow 59$)
+* **Byte 1:** seconds (counts $0 \rightarrow 59$)
+* **Byte 2:** minutes (counts $0 \rightarrow 59$)
+* **Byte 3:** hours (counts $0 \rightarrow 99$)
 
-### Entity Position & Orientation Variables
-Positions are represented using the 2-byte structure `XYPOS` (`x` and `y` offsets):
+---
 
-| Entity | Position Coord (`0x4D00+`) | Tile Coord (`0x4D0A+`) | Direction Vector (`0x4D14+`) | Current Orientation (`0x4D2C+`) | Next Tile Coord (`0x4D31+`) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Blinky (Red)** | `0x4D00` | `0x4D0A` | `0x4D14` | `0x4D2C` | `0x4D31` |
-| **Pinky (Pink)** | `0x4D02` | `0x4D0C` | `0x4D16` | `0x4D2D` | `0x4D33` |
-| **Inky (Cyan)** | `0x4D04` | `0x4D0E` | `0x4D18` | `0x4D2E` | `0x4D35` |
-| **Clyde (Orange)**| `0x4D06` | `0x4D10` | `0x4D1A` | `0x4D2F` | `0x4D37` |
-| **Pac-Man** | `0x4D08` | `0x4D12` | `0x4D1C` | `0x4D30` | `0x4D39` |
+### B. Interrupt-Driven Timed Tasks (ISR Tasks, `0x4C90 - 0x4CBF`)
+Up to 16 concurrent timed tasks are managed here. The timer countdown byte combines duration with units:
+* **Bits 0–5 (Lower 6 bits):** Countdown value (0 to 63).
+* **Bits 6–7 (Upper 2 bits):** Time unit mapping:
+  * `00` (0) = Frame ticks (decrements every VBlank, 1/60s)
+  * `01` (1) = Tenths of a second (decrements every 0.1s)
+  * `10` (2) = Seconds (decrements every 1.0s)
+  * `11` (3) = Ten-second intervals (decrements every 10.0s)
 
-*Note: Orientation values correspond to `0 = Up`, `1 = Left`, `2 = Down`, `3 = Right`.*
+Once a task's countdown hits `0`, the VBlank handler dispatches it. The original code registers exactly **10 distinct ISR timed tasks**:
 
-### Speed & Step Delay Patterns (4-byte registers)
-- **`0x4D46`:** `PACMAN_MOVE_PAT_NORMAL` (Pac-Man standard speed mask)
-- **`0x4D4A`:** `PACMAN_MOVE_PAT_POWERUP` (Pac-Man power pill speed mask)
-- **`0x4D56`:** `BLINKY_MOVE_PAT_NORMAL` (Blinky standard speed mask)
-- **`0x4D5A`:** `BLINKY_MOVE_PAT_EDIBLE` (Blinky frightened speed mask)
-- **`0x4D5E`:** `BLINKY_MOVE_PAT_TUNNEL` (Blinky tunnel speed mask)
+| Index | Constant Identifier | Callback Function Name | Operational Role / Event |
+| :---: | :--- | :--- | :--- |
+| **0** | `ISRTASK_INC_LEVEL_STATE` | `incLevelStateSubr_0894` | Progresses level setup/play transitions |
+| **1** | `ISRTASK_INC_MAIN_SUB2` | `incMainSub2_06a3` | Manages demo mode timing states |
+| **2** | `ISRTASK_INC_INTRO_STATE` | `incMainStateIntro_058e` | Animates the arcade intro / title screens |
+| **3** | `ISRTASK_INC_KILLED_STATE` | `incKilledState_1272` | Progresses Pac-Man's crumpling/death animation frames |
+| **4** | `ISRTASK_RESET_FRUIT` | `resetFruit_1000` | Clears fruit sprite from maze when display time ends |
+| **5** | *Unnamed / Auxiliary* | `func_100b` | Displays points messages (e.g. "100" or "5000" pts) on screen |
+| **6** | `ISRTASK_DISPLAY_READY` | `displayReady_0263` | Displays and blinks the `"READY!"` text on screen |
+| **7** | `ISRTASK_INC_SCENE1_STATE` | `incScene1State_212b` | Coordinates cutscene 1 (Giant Blinky sheet torn) |
+| **8** | `ISRTASK_INC_SCENE2_STATE` | `incScene2State_21f0` | Coordinates cutscene 2 (Blinky snagged on a nail) |
+| **9** | `ISRTASK_INC_SCENE3_STATE` | `incScene3State_22b9` | Coordinates cutscene 3 (Naked Blinky dragging sheet) |
 
-### State, Level & Scoring Variables
-- **`0x4D9F`:** `EATEN_PILLS_COUNT` (Total dots eaten in current level)
-- **`0x4DA6`:** `PACMAN_POWEREDUP` (Flag indicating Pac-Man is powered up by a power pill)
-- **`0x4DA7 - 0x4DAA`:** Edible states for Blinky, Pinky, Inky, Clyde respectively (`1` if blue/edible, `0` otherwise)
-- **`0x4DAB`:** `GHOST_STATE` (General ghost state: scatter, chase, frightened)
-- **`0x4DAC - 0x4DAF`:** Individual states for Blinky, Pinky, Inky, Clyde respectively
-- **`0x4DB6`:** `CRUISE_ELROY_MODE_1` (Blinky fast chase mode trigger 1)
-- **`0x4DB7`:** `CRUISE_ELROY_MODE_2` (Blinky ultra-fast chase mode trigger 2)
-- **`0x4DBD - 0x4DBE`:** `GHOST_EDIBLE_TIME` (2-byte tick counter remaining for frightened ghost state)
-- **`0x4DBF`:** `PACMAN_IN_TUNNEL` (1 byte)
-- **`0x4DC0`:** `GHOST_ANIMATION` (1 byte)
-- **`0x4DC1`:** `NONRANDOM_MOVEMENT` (1 byte)
-- **`0x4DC2`:** `ORIENTATION_CHANGE_COUNT` (2 bytes)
-- **`0x4DC4`:** `GHOST_ANIMATION_COUNTER` (1 byte)
-- **`0x4DC5`:** `COUNT_SINCE_PAC_KILLED` (2 bytes)
-- **`0x4DC7`:** `TRIAL_ORIENTATION` (1 byte)
-- **`0x4DC8`:** `GHOST_COL_POWERUP_COUNTER` (1 byte)
-- **`0x4DC9`:** `RND_VAL_PTR` (2 bytes)
-- **`0x4DCB`:** `EDIBLE_REMAIN_COUNT` (2 bytes)
-- **`0x4DCE`:** `COIN_TIMER` (1 byte)
-- **`0x4DCF`:** `PILL_CHANGE_COUNTER` (1 byte)
-- **`0x4DD0`:** `KILLED_COUNT` (1 byte)
-- **`0x4DD1`:** `KILLED_STATE` (1 byte)
-- **`0x4DD2`:** `FRUIT_POS` (current bonus fruit display tile position)
-- **`0x4DD4`:** `FRUIT_POINTS` (point value for current level fruit)
-- **`0x4E00`:** `MAIN_STATE` (overall game state)
-- **`0x4E03`:** `CREDIT_STATE` (coin credits counter check)
-- **`0x4E04`:** `LEVEL_STATE` (level transition controller)
-- **`0x4E09`:** `PLAYER` (currently active player: `0` = Player 1, `1` = Player 2)
+---
 
-#### Player 1 Statistics Block (at `0x4E0A`)
-- **`0x4E13`:** `P1_LEVEL` (Player 1 current level number)
-- **`0x4E14`:** `P1_REAL_LIVES` (Player 1 remaining life count)
-- **`0x4E16 - 0x4E33`:** `P1_PILL_ARRAY` (19 bytes = 152 bits representing dot coordinates on the maze)
-- **`0x4E80 - 0x4E83`:** `P1_SCORE` (Player 1 Score in 4-byte packed BCD format)
+### C. Main Loop Sequenced Tasks (Non-ISR Tasks, `0x4CC0 - 0x4CDF`)
+Managed as a 16-entry ring buffer (using Z80 CPU registers as pointers `TASK_LIST_BEGIN` and `TASK_LIST_END`). These tasks run sequentially in the main loop without timers. The game maps **32 distinct game engine operations** here:
 
-#### Player 2 Statistics Block (at `0x4E38`)
-- **`0x4E38`:** `P2_CURR_DIFFICULTY` (2 bytes)
-- **`0x4E41`:** `P2_LEVEL` (Player 2 current level number)
-- **`0x4E42`:** `P2_REAL_LIVES` (Player 2 remaining life count)
-- **`0x4E44 - 0x4E61`:** `P2_PILL_ARRAY` (19-byte active dots grid for Player 2)
-- **`0x4E84 - 0x4E87`:** `P2_SCORE` (Player 2 Score in 4-byte packed BCD format)
-
-- **`0x4E88 - 0x4E8B`:** `HIGH_SCORE` (Current Session High Score in 4-byte packed BCD format)
+* **Index 0:** `jumpClearScreen_23ed` — Resets buffers and forces screen redrawing.
+* **Index 1 (`TASK_MAZE_COLOURS`):** `mazeColours_24d7` — Alternates the maze colors during level-clear flashing.
+* **Index 2:** `drawMaze_2419` — Draws static maze lines/walls.
+* **Index 3:** `drawPills_2448` — Draws food dots and power pills.
+* **Index 4 (`TASK_INIT_POSITIONS`):** `initialisePositions_25d3` — Sets character start positions.
+* **Index 5:** `blinkySubstateTBD_268b` — Logic substate updates for Blinky.
+* **Index 6:** `clearColour_240d` — Clears video/color attribute buffers.
+* **Index 7:** `resetGameState_2698` — Resets active level and lives counters.
+* **Index 8 (`TASK_SCATTER_CHASE_BLINKY`):** `blinkyScatterOrChase_2730` — Executes Blinky AI pathfinding.
+* **Index 9:** `pinkyScatterOrChase_276c` — Executes Pinky AI.
+* **Index 10:** `inkyScatterOrChase_27a9` — Executes Inky AI.
+* **Index 11:** `clydeScatterOrChase_27f1` — Executes Clyde AI.
+* **Index 12 (`TASK_HOME_RANDOM_BLINKY`):** `homeOrRandomBlinky_283b` — Movement logic for Blinky inside home gate.
+* **Index 13:** `homeOrRandomPinky_2865`
+* **Index 14:** `homeOrRandomInky_288f`
+* **Index 15:** `homeOrRandomClyde_28b9`
+* **Index 16 (`TASK_SETUP_GHOST_TIMERS`):** `setupGhostTimers_000d` — Sets time intervals for ghosts to leave the house.
+* **Index 17:** `clearGhostState_26a2` — Clears ghost edible/chase flag statuses.
+* **Index 18:** `clearPillArrays_24c9` — Cleets dots array flags.
+* **Index 19:** `clearPillsScreen_2a35` — Removes dots from active layout.
+* **Index 20 (`TASK_CONFIGURE_GAME`):** `configureGame_26d0` — Checks dip switches and players counts.
+* **Index 21:** `updatePillsFromScreen_2487` — Regenerates active dots coordinates.
+* **Index 22:** `advanceLevelState_23e8` — Shifts level controllers forward.
+* **Index 23 (`TASK_PACMAN_ORIENT`):** `pacmanOrientationDemo_28e3` — Sets Pac-Man's direction in demo.
+* **Index 24 (`TASK_CLEAR_SCORES`):** `clearScores_2ae0` — Resets active session scores arrays.
+* **Index 25 (`TASK_ADD_TO_SCORE`):** `addToScore_2a5a` — Performs BCD math to increase points counter.
+* **Index 26 (`TASK_BOTTOM_COLOUR`):** `bottomTextColourAndDisplayLives_2b6a` — Draws remaining lives symbols.
+* **Index 27:** `fruitHistoryLevelCheck_2bea` — Generates active level fruit indices list.
+* **Index 28 (`TASK_DISPLAY_MSG`):** `displayMsg_2c5e` — Redraws text strings like READY! or GAME OVER.
+* **Index 29:** `displayCredits_2ba1` — Draws coin credits text on HUD.
+* **Index 30:** `resetPositions_2675` — Resets player and ghosts to default start slots.
+* **Index 31:** `showBonusLifeScore_26b2` — Award animations display calculations.
 
 ---
 
@@ -370,7 +363,7 @@ Commonly read at address `0x5080`. Board-level switches configured by arcade ope
   * `01` (1) = 15,000 points
   * `10` (2) = 20,000 points
   * `11` (3) = Disabled
-* **Bit 6 (`0x40`):** Gameplay Difficulty (`0` = Hard, `1` = Normal)
+* **Bit 6 (`0x40`):** Dip switch difficulty (`0` = Hard, `1` = Normal)
 * **Bit 7 (`0x80`):** Ghost Names Set (`0` = Alternate names, `1` = Normal names)
 
 ---
@@ -403,7 +396,240 @@ Writing any value to this register range kicks/resets the physical hardware watc
 
 ---
 
-## 11. Pac-Man Z80 CPU Address Space & ROM Mapping Addresses
+## 11. ROM-Defined Parameter Tables (Gameplay Mechanics, AI & Sound)
+
+Pac-Man stores several configuration databases in ROM that are loaded into RAM variables and registers at level startup or game event triggers to drive the game loop:
+
+### A. Level Difficulty Index Selector (`DATA_0796` - ROM `0x0796`)
+Contains 21 entries of 6 bytes each. Translates the current level number (difficulty index 0 to 20) into sub-table offsets:
+* **Byte 0:** Index into speed and mode timings table (`MOVE_DATA_330f`).
+* **Byte 1:** Sets relative difficulty index (`REL_DIFF` at `0x4DB0`).
+* **Byte 2:** Index into `DATA_0843` (Ghost Leave-House counter thresholds).
+* **Byte 3:** Index into `DATA_084F` (Blinky Cruise Elroy dot triggers).
+* **Byte 4:** Index into `DATA_0861` (Ghost blue/frightened edible timer duration).
+* **Byte 5:** Index into `DATA_0873` (Ghost leaving home inactivity counter).
+
+---
+
+### B. Speed & Ghost Mode Timing Block (`MOVE_DATA_330f` - ROM `0x330F`)
+Contains 42-byte configuration entries loaded during level start:
+* **Bytes 0–27 (28 bytes): Speed Masks (Step Delays):**
+  Defines 32-bit speed pattern masks for Pac-Man and ghosts (normal, edible, and tunnel). A bit set to `1` allows movement on that frame; `0` forces a pause.
+* **Bytes 28–41 (14 bytes / 7 words): AI State Transition thresholds (`DIFFICULTY_TABLE`):**
+  Contains 7 integer thresholds representing the count of total ghost orientation changes (`ORIENTATION_CHANGE_COUNT`) before transitioning between Scatter and Chase:
+  1. Scatter 1 $\rightarrow$ Chase 1
+  2. Chase 1 $\rightarrow$ Scatter 2
+  3. Scatter 2 $\rightarrow$ Chase 2
+  4. Chase 2 $\rightarrow$ Scatter 3
+  5. Scatter 3 $\rightarrow$ Chase 3
+  6. Chase 3 $\rightarrow$ Scatter 4
+  7. Scatter 4 $\rightarrow$ Chase 4 (Permanent chase mode)
+
+---
+
+### C. Ghost House Dot Thresholds (`DATA_0843` - ROM `0x0843`)
+Defines the number of dots Pac-Man must eat before the ghosts are allowed to exit the starting house:
+* **Level 1 (Entry 0):** Pinky (20), Inky (30), Clyde (70)
+* **Level 2 (Entry 1):** Pinky (0), Inky (30), Clyde (60)
+* **Level 3 (Entry 2):** Pinky (0), Inky (0), Clyde (50)
+* **Level 4+ (Entry 3):** Pinky (0), Inky (0), Clyde (0) (Exits instantly after spawn)
+
+---
+
+### D. Ghost Frightened Edible Timer (`DATA_0861` - ROM `0x0861`)
+16-bit values specifying how long (in 60Hz ticks) ghosts stay blue after a power pill is eaten:
+* **Entry 0 (Level 1):** `0x03C0` (960 ticks = 16 seconds)
+* **Entry 1 (Level 2):** `0x0348` (840 ticks = 14 seconds)
+* **Entry 2 (Level 3):** `0x02D0` (720 ticks = 12 seconds)
+* **Entry 3 (Level 4):** `0x0258` (600 ticks = 10 seconds)
+* **Entry 4 (Level 5):** `0x01E0` (480 ticks = 8 seconds)
+* **Entry 5 (Level 6):** `0x0168` (360 ticks = 6 seconds)
+* **Entry 6 (Level 7):** `0x00F0` (240 ticks = 4 seconds)
+* **Entry 7 (Level 8):** `0x0078` (120 ticks = 2 seconds)
+* **Entry 8 (Level 9):** `0x0001` (1 tick = instantaneous flash)
+* **Entry 9 (Level 10+):** `0x0000` (Ghosts do not turn blue at all)
+
+---
+
+### E. Ghost Leaving House Inactivity Limits (`DATA_0873` - ROM `0x0873`)
+16-bit values specifying the frame count threshold of Pac-Man inactivity (no dots eaten) before a ghost is forced to exit the house:
+* **Entry 0 (Level 1):** `240` ticks (4 seconds)
+* **Entry 1 (Level 2):** `240` ticks (4 seconds)
+* **Entry 2 (Level 3+):** `180` ticks (3 seconds)
+
+---
+
+### F. Blinky Cruise Elroy Remaining Dots (`DATA_084f` - ROM `0x084F`)
+Pairs of bytes `(dots_mode_1, dots_mode_2)` indicating how many dots must remain in the maze before Blinky triggers Cruise Elroy:
+* **Level 1 (Entry 0):** Mode 1 (20 dots remaining), Mode 2 (10 dots remaining)
+* **Level 2 (Entry 1):** Mode 1 (30 dots), Mode 2 (15 dots)
+* **Level 3 (Entry 2):** Mode 1 (40 dots), Mode 2 (20 dots)
+* **Level 4 (Entry 3):** Mode 1 (50 dots), Mode 2 (25 dots)
+* **Level 5 (Entry 4):** Mode 1 (60 dots), Mode 2 (30 dots)
+
+---
+
+### G. Audio & Synthesizer Tables
+The sound engine plays tones and effects using data tables located at:
+* **`EFFECT_TABLE_CH1_3b30` / `EFFECT_TABLE_CH2_3b40` / `EFFECT_TABLE_CH3_3b80` (Sound Effect Parameter Tables - Address `0x3B30`, `0x3B40`, `0x3B80`):**
+  - Defines the audio envelope parameters for sound effects on Channel 1, 2, and 3 respectively.
+  - Controls parameters like initial volume, volume delta (rise/fall), frequency offsets, duration of sound, and frequency sweep speed (delta) to synthesize sounds like the waka-waka eating sound, siren pitch sweeps, or ghost eating sound.
+* **`SONG_TABLE_CH1_3bc8` / `SONG_TABLE_CH2_3bcc` / `SONG_TABLE_CH3_3bd0` (Music/Intro Song Tables - Address `0x3BC8`, `0x3BCC`, `0x3BD0`):**
+  - Contains the musical note note-lengths and note-index lists for the iconic game start intro theme song, played simultaneously on three voice channels.
+* **`FREQ_TABLE_3bb8` (Frequency Lookup Table - Address `0x3BB8`):**
+  - Maps note values/indexes to their corresponding 20-bit or 16-bit hardware frequency register values for the Namco WSG, allowing the song table notes to be translated into exact pitches.
+
+---
+
+### H. Movement Offsets Vector Table (`0x32FF`)
+Maps direction indexes (0: Right, 1: Down, 2: Left, 3: Up) to pixel offset coordinates:
+* **Right (`0x32FF`):** `x = 1, y = 0`
+* **Down (`0x3301`):** `x = 0, y = 1`
+* **Left (`0x3303`):** `x = -1, y = 0`
+* **Up (`0x3305`):** `x = 0, y = -1`
+
+---
+
+## 12. Dots Eaten & Ghost House Release Logic
+
+The mechanics of how dots eaten release the ghosts from the house inside the playfield follow two distinct systems depending on whether a life has just started:
+
+### A. Individual Dot Counters (Standard Mode)
+During a normal level run where Pac-Man has not died, each ghost in the house has an individual counter that increments only when they are the "next" ghost in the release queue:
+1. **Pinky:** Leaves when her counter reaches the limit loaded from `DATA_0843` (e.g. 20 dots on Level 1, 0 on Level 2+).
+2. **Inky:** Leaves when his counter reaches the limit (30 dots on Levels 1 & 2, 0 on Level 3+).
+3. **Clyde:** Leaves when his counter reaches the limit (70 dots on Level 1, 60 on Level 2, 50 on Level 3, 0 on Level 4+).
+
+### B. Global Dot Counter (`EATEN_PILLS_COUNT` - `0x4D9F`)
+If Pac-Man dies, the game temporarily suspends the individual counters and switches to a global counter (`EATEN_PILLS_COUNT`) to speed up game pacing:
+* **Pinky** is released when the global counter reaches **7** dots.
+* **Inky** is released when the global counter reaches **17** dots.
+* **Clyde** is released when the global counter reaches **32** dots.
+* Once Clyde exits the house, the game sets `P1_DIED_IN_LEVEL` back to `0`, clears `EATEN_PILLS_COUNT`, and returns to using the standard individual dot counters.
+
+### C. Inactivity Escape Timer
+If Pac-Man is not eating any dots (e.g., hiding or trapped), a secondary inactivity timer ticks. If it reaches `UNITS_B4_GHOST_LEAVES_HOME` (typically 3 or 4 seconds, loaded from `DATA_0873`), it immediately forces the next ghost in the queue to leave the house, resetting the inactivity timer.
+
+---
+
+## 13. Ghost Targets & Heading-Home State Transitions
+
+The ghosts update their heading target tiles depending on their state, which determines how they navigate around the maze:
+
+### A. Scatter Mode Corner Target Coordinates
+When in Scatter mode, each ghost targets a tile location outside the boundaries of the playfield corners. This causes them to circle their respective corner corridors indefinitely:
+* **Blinky (Top-Right):** Targets `{ y = 29, x = 34 }` (Row 34, Column 29)
+* **Pinky (Top-Left):** Targets `{ y = 29, x = 57 }` (Row 57, Column 29)
+* **Inky (Bottom-Right):** Targets `{ y = 64, x = 32 }` (Row 32, Column 64)
+* **Clyde (Bottom-Left):** Targets `{ y = 64, x = 59 }` (Row 59, Column 64)
+
+*Note: In the Z80 CPU layout, coordinates are rotated. `y` maps to the column (0-27) and `x` maps to the row (0-35).*
+
+---
+
+### B. Eaten State & Returning Home Pathfinding
+When Pac-Man eats a blue ghost, the entity undergoes a sequence of state transitions to return to the spawn house:
+
+```mermaid
+graph TD
+    ALIVE["GHOST_STATE_ALIVE (0)"] -->|Eaten by Pac-Man| DEAD["GHOST_STATE_DEAD (1)"]
+    DEAD -->|Renders as eyes only; Pathfinds to Entrance| ENTRANCE["GHOST_STATE_ENTER_HOUSE (2)"]
+    ENTRANCE -->|Enters center gate| INSIDE["GHOST_STATE_HOUSE_MOVE (3)"]
+    INSIDE -->|Arrives at seat; Regenerates body| ALIVE
+```
+
+1. **`GHOST_STATE_DEAD` (1):** The ghost becomes a pair of eyes. Its pathfinding target is set to the ghost house entrance coordinates:
+   $$\text{Entrance Target} = \{ y = \text{0x2C}, x = \text{0x2E} \}$$
+   *(Row 14, Column 12)*
+2. **`GHOST_STATE_ENTER_HOUSE` (2):** Once the eyes reach the entrance tile, the ghost state changes to `2`, and the entity moves downward past the gate.
+3. **`GHOST_STATE_HOUSE_MOVE` (3):** The ghost moves left or right inside the house to its designated seat.
+4. **`GHOST_STATE_ALIVE` (0):** Once seated, the body sprite is restored, and the ghost begins standard house exit checking.
+
+---
+
+## 14. Level-by-Level Behavior & Difficulty Configuration Table (`DATA_0796`)
+
+The primary difficulty settings database starts in ROM at `DATA_0796` (`0x0796`). It consists of 21 entries of 6 bytes, indexed by difficulty level (0 to 20):
+
+| Difficulty Index | level | Speed & Timings Index | Relative Difficulty | Ghost House Dot Index | Cruise Elroy Index | Edible Time Index (Duration) | Inactivity Ticks Index (Inactivity Duration) |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **0** | 1 | `03` (Entry 3) | `01` | `01` (Entry 1) | `00` (20/10 dots) | `00` (960 ticks = 16.0s) | `00` (240 ticks = 4.0s) |
+| **1** | 2 | `04` (Entry 4) | `01` | `02` (Entry 2) | `01` (30/15 dots) | `01` (840 ticks = 14.0s) | `00` (240 ticks = 4.0s) |
+| **2** | 3 | `04` (Entry 4) | `01` | `03` (Entry 3) | `02` (40/20 dots) | `02` (720 ticks = 12.0s) | `01` (240 ticks = 4.0s) |
+| **3** | 4 | `04` (Entry 4) | `02` | `03` (Entry 3) | `02` (40/20 dots) | `02` (720 ticks = 12.0s) | `01` (240 ticks = 4.0s) |
+| **4** | 5 | `05` (Entry 5) | `00` | `03` (Entry 3) | `02` (40/20 dots) | `03` (600 ticks = 10.0s) | `02` (180 ticks = 3.0s) |
+| **5** | 6 | `05` (Entry 5) | `01` | `03` (Entry 3) | `03` (50/25 dots) | `03` (600 ticks = 10.0s) | `02` (180 ticks = 3.0s) |
+| **6** | 7 | `05` (Entry 5) | `02` | `03` (Entry 3) | `03` (50/25 dots) | `03` (600 ticks = 10.0s) | `02` (180 ticks = 3.0s) |
+| **7** | 8 | `05` (Entry 5) | `02` | `03` (Entry 3) | `03` (50/25 dots) | `03` (600 ticks = 10.0s) | `02` (180 ticks = 3.0s) |
+| **8** | 9 | `05` (Entry 5) | `00` | `03` (Entry 3) | `04` (60/30 dots) | `04` (480 ticks = 8.0s)  | `02` (180 ticks = 3.0s) |
+| **9** | 10 | `05` (Entry 5) | `01` | `03` (Entry 3) | `04` (60/30 dots) | `03` (600 ticks = 10.0s) | `02` (180 ticks = 3.0s) |
+| **10** | 11 | `05` (Entry 5) | `02` | `03` (Entry 3) | `04` (60/30 dots) | `05` (360 ticks = 6.0s)  | `02` (180 ticks = 3.0s) |
+| **11** | 12 | `05` (Entry 5) | `02` | `03` (Entry 3) | `04` (60/30 dots) | `06` (240 ticks = 4.0s)  | `02` (180 ticks = 3.0s) |
+| **12** | 13 | `05` (Entry 5) | `00` | `03` (Entry 3) | `05` (80/40 dots) | `07` (120 ticks = 2.0s)  | `02` (180 ticks = 3.0s) |
+| **13** | 14 | `05` (Entry 5) | `02` | `03` (Entry 3) | `05` (80/40 dots) | `07` (120 ticks = 2.0s)  | `02` (180 ticks = 3.0s) |
+| **14** | 15 | `05` (Entry 5) | `01` | `03` (Entry 3) | `05` (80/40 dots) | `05` (360 ticks = 6.0s)  | `02` (180 ticks = 3.0s) |
+| **15** | 16 | `05` (Entry 5) | `02` | `03` (Entry 3) | `05` (80/40 dots) | `07` (120 ticks = 2.0s)  | `02` (180 ticks = 3.0s) |
+| **16** | 17 | `05` (Entry 5) | `02` | `03` (Entry 3) | `05` (80/40 dots) | `07` (120 ticks = 2.0s)  | `02` (180 ticks = 3.0s) |
+| **17** | 18 | `05` (Entry 5) | `02` | `03` (Entry 3) | `05` (80/40 dots) | `07` (120 ticks = 2.0s)  | `02` (180 ticks = 3.0s) |
+| **18** | 19 | `05` (Entry 5) | `02` | `03` (Entry 3) | `07` (120/60 dots) | `08` (1 tick = flash only)| `02` (180 ticks = 3.0s) |
+| **19** | 20 | `05` (Entry 5) | `02` | `03` (Entry 3) | `07` (120/60 dots) | `08` (1 tick = flash only)| `02` (180 ticks = 3.0s) |
+| **20** | 21+ | `06` (Entry 6) | `02` | `03` (Entry 3) | `07` (120/60 dots) | `08` (1 tick = flash only)| `02` (180 ticks = 3.0s) |
+
+---
+
+## 15. Speed & Mode Timings Database Decoded (`MOVE_DATA_330f` - ROM `0x330F`)
+
+This table stores the character speeds and Chase/Scatter timing thresholds. Decoded values:
+
+### A. Chase/Scatter Duration Timing Thresholds (`DIFFICULTY_TABLE`)
+For each speed entry index (0 to 6), the Chase/Scatter state transitions occur when the frame counter (`ORIENTATION_CHANGE_COUNT`) matches the thresholds:
+
+- **Entry 3 (Level 1 timings):** `[420, 1620, 2040, 3240, 3540, 4740, 5040]`
+  - *Phase 1 (Scatter):* 0 to 420 (7 seconds)
+  - *Phase 2 (Chase):* 420 to 1620 (20 seconds)
+  - *Phase 3 (Scatter):* 1620 to 2040 (7 seconds)
+  - *Phase 4 (Chase):* 2040 to 3240 (20 seconds)
+  - *Phase 5 (Scatter):* 3240 to 3540 (5 seconds)
+  - *Phase 6 (Chase):* 3540 to 4740 (20 seconds)
+  - *Phase 7 (Scatter):* 4740 to 5040 (5 seconds)
+  - *Phase 8 (Permanent Chase):* 5040+ (infinite)
+- **Entry 4 (Levels 2–4 timings):** `[420, 1620, 2040, 3240, 3540, 65534, 65535]`
+  - *Phase 1 (Scatter):* 0 to 420 (7 seconds)
+  - *Phase 2 (Chase):* 420 to 1620 (20 seconds)
+  - *Phase 3 (Scatter):* 1620 to 2040 (7 seconds)
+  - *Phase 4 (Chase):* 2040 to 3240 (20 seconds)
+  - *Phase 5 (Scatter):* 3240 to 3540 (5 seconds)
+  - *Phase 6 (Permanent Chase):* 3540+ (infinite)
+- **Entry 5 & 6 (Levels 5+ timings):** `[300, 1500, 1800, 3000, 3300, 65534, 65535]`
+  - *Phase 1 (Scatter):* 0 to 300 (5 seconds)
+  - *Phase 2 (Chase):* 300 to 1500 (20 seconds)
+  - *Phase 3 (Scatter):* 1500 to 1800 (5 seconds)
+  - *Phase 4 (Chase):* 1800 to 3000 (20 seconds)
+  - *Phase 5 (Scatter):* 3000 to 3300 (5 seconds)
+  - *Phase 6 (Permanent Chase):* 3300+ (infinite)
+- **Entry 0 (Alternate timings):** `[600, 1800, 2400, 3600, 4200, 6000, 6420]`
+  - *Phase 1 (Scatter):* 0 to 600 (10 seconds)
+  - *Phase 2 (Chase):* 600 to 1800 (20 seconds)
+  - *Phase 3 (Scatter):* 1800 to 2400 (10 seconds)
+  - *Phase 4 (Chase):* 2400 to 3600 (20 seconds)
+  - *Phase 5 (Scatter):* 3600 to 4200 (10 seconds)
+  - *Phase 6 (Chase):* 4200 to 6000 (30 seconds)
+  - *Phase 7 (Scatter):* 6000 to 6420 (7 seconds)
+  - *Phase 8 (Permanent Chase):* 6420+ (infinite)
+- **Entry 1 (Demo Mode timings):** `[0, 0, 0, 0, 0, 0, 0]` (Instantly transitions to permanent Chase)
+- **Entry 2 (Alternate timings):** `[600, 2100, 2520, 4020, 4440, 5640, 5940]`
+  - *Phase 1 (Scatter):* 0 to 600 (10 seconds)
+  - *Phase 2 (Chase):* 600 to 2100 (25 seconds)
+  - *Phase 3 (Scatter):* 2100 to 2520 (7 seconds)
+  - *Phase 4 (Chase):* 2520 to 4020 (25 seconds)
+  - *Phase 5 (Scatter):* 4020 to 4440 (7 seconds)
+  - *Phase 6 (Chase):* 4440 to 5640 (20 seconds)
+  - *Phase 7 (Scatter):* 5640 to 5940 (5 seconds)
+  - *Phase 8 (Permanent Chase):* 5940+ (infinite)
+
+---
+
+## 16. Pac-Man Z80 CPU Address Space & ROM Mapping Addresses
 
 The original arcade game runs on an 8-bit Z80 microprocessor addressing up to 64 KB of memory space. Program code is mapped directly into CPU memory, whereas graphics and sound registers control physical custom hardware connected to their respective dedicated daughterboards.
 
@@ -433,6 +659,6 @@ The original arcade game runs on an 8-bit Z80 microprocessor addressing up to 64
 Certain graphics and sound PROMs are connected directly to separate bus lanes for custom hardware processors:
 1. **Character ROM (`pacman.5e`):** Mapped inside the video controller board. The video processor reads the VRAM coordinates (`0x4000 - 0x43FF`) to fetch the tile indices and draws pixels from this ROM.
 2. **Sprite ROM (`pacman.5f`):** Mapped inside the sprite controller hardware. The hardware reads the active sprite attribute table (`0x4FF0 - 0x4FFF`) and coordinate registers (`0x5060 - 0x506F`) to draw moving sprite quadrants.
-3. **Color Palette PROM (`82s123.7f`):** Wired directly into the final video DAC output stage to map the digital indexes into analog RGB colors.
+3. **Color Palette PROM (`82s123.7f`):** Wired directly into the final video DAC output stage to map the digital indices into analog RGB colors.
 4. **Color Lookup Table PROM (`82s126.4a`):** Read by the video board to resolve 4-color palettes for each text tile or sprite drawing step.
 5. **Sound Wave PROMs (`82s126.1m` / `82s126.3m`):** Wired directly to the Namco custom Waveform Sound Generator (WSG) hardware. The Z80 selects the waveform index and details via the sound register block (`0x5040 - 0x505F`).
