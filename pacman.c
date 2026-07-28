@@ -403,12 +403,12 @@ void isr_008d (void)
      *  begin with?  Maybe easier to work with sprite shape numbers that are not
      *  times 4 */
 
-    rotate8 (&SPRITE_POS[0], 2);
-    rotate8 (&SPRITE_POS[2], 2);
-    rotate8 (&SPRITE_POS[4], 2);
-    rotate8 (&SPRITE_POS[6], 2);
-    rotate8 (&SPRITE_POS[8], 2);
-    rotate8 (&SPRITE_POS[10], 2);
+    rotate8 (&SPRITE_POS[0], 2);   // Pinky
+    rotate8 (&SPRITE_POS[2], 2);   // Blinky
+    rotate8 (&SPRITE_POS[4], 2);   // Inky
+    rotate8 (&SPRITE_POS[6], 2);   // Clyde
+    rotate8 (&SPRITE_POS[8], 2);   // Pacman
+    rotate8 (&SPRITE_POS[10], 2);  // Fruit
 
     //-------------------------------
     // 0114  3ad14d    ld      a,(#4dd1)
@@ -575,6 +575,7 @@ void isr_008d (void)
 
 void updateCounters_01dc (void)
 {
+
     //-------------------------------
     // 01dc  21844c    ld      hl,#4c84
     // 01df  34        inc     (hl)
