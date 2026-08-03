@@ -4,7 +4,11 @@ The original physical *Pac-Man* arcade machine uses several PROM and ROM chips t
 
 ---
 
-## 1. Pac-Man ROM 5E (Character Graphics)
+## 1. General Pac-Man graphics. 
+
+The screen consists of a kind of text-display with an overlay of sprites. The text alphabet has 256 symbols and the symbols are stored in tiles in rom 5e.
+
+## 2. Pac-Man ROM 5E (Characters aka Tiles)
 
 ### Specifications
 - **Size:** 4,096 bytes (4 KB)
@@ -12,23 +16,28 @@ The original physical *Pac-Man* arcade machine uses several PROM and ROM chips t
 - **Resolution:** 8x8 pixels per tile
 - **Capacity:** 256 tiles
 
-### Decode Logic and Memory Layout
-For any tile index `chr` (0 to 255) and pixel coordinates `(x, y)` (0 to 7) within the 8x8 cell:
-1. The 16 bytes representing the tile are located at `chr * 16`.
-2. The byte index `z` is calculated depending on the row `y`:
-   - If `y < 4` (top half): `z = 8 + (7 - x)` (bytes 8 to 15)
-   - If `y >= 4` (bottom half): `z = 0 + (7 - x)` (bytes 0 to 7)
-3. The bit planes are extracted:
-   - **Plane 0 bit:** `p0 = 1` if `(byte & (0x08 >> (y & 3)))` is non-zero, else `0`
-   - **Plane 1 bit:** `p1 = 1` if `(byte & (0x80 >> (y & 3)))` is non-zero, else `0`
-4. The pixel color value is: `color_index = (p1 << 1) | p0` (values 0, 1, 2, or 3)
+### 2.1 Decode Logic and Memory Layout
 
-### Decoded Character Grid
-- **Index `0x00` - `0x0F`:** Alphanumeric digits `0`-`9` and letters `A`-`F`
-- **Index `0x10` - `0x1F`:** Special symbols, bonus items, ghost eyes, and HUD elements
-- **Index `0x20` - `0xFF`:** Maze borders, corners, walls, and gameplay text strings
+There are 256 tiles stored sequentialy in the rom. A tile can be found by indexing into (index * 16) the rom and retrieving the 16 bytes containing the graphics data.
 
-![Pac-Man 5E Tile Graphics Grid](file:///C:/Users/paulf/.gemini/antigravity/brain/09200c2d-ffdf-4599-90a0-b08f3c93e31f/pacman_5e_tiles.png)
+
+![Figure 2: Tile Storage in ROM](./16BytesTileInRom.png)
+
+1. A tile consist of 16 bytes. 
+2. The coding of the tile is complex. The tile is rotated 90 degrees clockwise to make the redering easier on the CRT-tube which is also fitted rotated in the arcade cabinet. 
+
+Each individual byte contains the encoding for plane 0 and plane 1:
+
+ ![Figure 2: Tile Storage in ROM](./ByteEncoding.png)
+
+3. Plane 0 and Plane 1 together form the color encoding for each pixel.
+
+
+### 2.2 Decoded Character Grid
+- **Index `0x00` - `0x8F`:** Alphanumeric digits `0`-`9`, dots and letters `A`-`F`
+- **Index `0x90` - `0xCF`:** Special symbols, bonus items, and ghost eyes
+- **Index `0xD0` - `0xFF`:** Maze borders, corners, walls
+![Pac-Man 5E Tile Graphics Grid](./5e_render.png)
 
 ---
 
@@ -54,16 +63,12 @@ For any sprite index `shape` (0 to 63) and pixel coordinates `(x, y)` (0 to 15) 
 4. The pixel color value is: `color_index = (p1 << 1) | p0`
 
 ### Decoded Sprite Grid
-- **Index `0x00` - `0x07`:** Fruits (cherries, strawberries, peaches, apples, melons, galaxian flagships, bells, keys)
-- **Index `0x08` - `0x0F`:** Ghosts (Blinky, Pinky, Inky, Clyde with directional eyes, and flashing states)
-- **Index `0x10` - `0x1F`:** Pac-Man movement orientations and dying/crumpling frames
-- **Index `0x20` - `0x3F`:** Special cutscene sprites, animations, and auxiliary assets
 
-![Pac-Man 5F Sprite Graphics Grid](file:///C:/Users/paulf/.gemini/antigravity/brain/09200c2d-ffdf-4599-90a0-b08f3c93e31f/pacman_5f_sprites.png)
+![Pac-Man 5F Sprite Graphics Grid](./5f_render.png)
 
 ---
 
-## 3. Pac-Man ROM 82s123.7f (Color Palette)
+## 4. Pac-Man ROM 82s123.7f (Color Palette)
 
 ### Specifications
 - **Type:** Bipolar PROM (82s123 or compatible)
@@ -73,7 +78,7 @@ For any sprite index `shape` (0 to 63) and pixel coordinates `(x, y)` (0 to 15) 
   - **Bits 3–5:** Green intensity (0 to 7)
   - **Bits 6–7:** Blue intensity (0 to 3)
 
-### Decoded Palette Table
+### 4.1 Decoded Palette Table
 Using the hardware RGB weighting formulas (R, G multiplied by 36; B multiplied by 85):
 
 | Index | Hex Value | Binary (BBGGGRRR) | Red (raw) | Green (raw) | Blue (raw) | RGB Color | Hex Color | Visual Color | Usage / Role |
@@ -97,12 +102,9 @@ Using the hardware RGB weighting formulas (R, G multiplied by 36; B multiplied b
 
 *Note: Indices 16–31 are all `0x00` (unused padding).*
 
-### Decoded Palette Swatches
-Here is the visual rendering of the 16 colors:
 
-![Pac-Man 16-Color Palette Swatches](file:///C:/Users/paulf/.gemini/antigravity/brain/09200c2d-ffdf-4599-90a0-b08f3c93e31f/pacman_palette.png)
-
----
+### 5 Color Table Palette
+![Pac-Man 16-Color Palette](.//color_table_render.png)
 
 ## 4. Pac-Man ROMs 82s126.1m & 82s126.3m (Sound Waves)
 
