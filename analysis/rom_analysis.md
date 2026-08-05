@@ -64,7 +64,11 @@ For any sprite index `shape` (0 to 63) and pixel coordinates `(x, y)` (0 to 15) 
 
 ### Decoded Sprite Grid
 
-![Pac-Man 5F Sprite Graphics Grid](./5f_render.png)
+![Pac-Man 5F Sprite Graphics Grid](./sprite_palette_01.bmp)
+
+
+All sprites with all palletes used in the game:
+![Pac-Man 5F Sprites all pallettes](./sprites_all_palettes.bmp)
 
 ---
 
