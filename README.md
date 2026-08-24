@@ -69,9 +69,10 @@ Keys (Windows)
 * **P** = Pause CPU
 * **D** = Toggle Target Vector overlays (visualizing target tiles for Blinky, Pinky, Inky, Clyde, and Pac-Man)
 
+
 Goals
 -----
-Create a fully functional working version of Pac-Man that behaves identically to the original (patterns work exactly as they would on MAME) but is compiled C code instead of emulated Z80.
+Using a fully functional real Arcade game to help my learning process on the strengths and weaknesses of current AI-tooling. I use AI in this process to help me sift through the assembly and C-code. Also some projects are added in the process.
 
 [Original blog containing more details][1]
 
