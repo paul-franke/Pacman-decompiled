@@ -914,15 +914,21 @@ void checkCoinCounterTimeout_02ad(void) {
   COIN_COUNTER--;
 }
 
-/* Coins -> credits routine */
+/*
+ * ISR TASK
+ * translates inserted coins into playable game credits, taking into account the DIP switch settings 
+ * (e.g. "1 Coin 1 Play", "2 Coins 1 Play", etc.).
+ * It is called every V-Blank frame when the hardware registers detect that a coin has passed through 
+ * the physical coin slot, or the Service button was pressed.
+ */
 void checkCoinCredit_02df(void) {
   //-------------------------------
   // 02df  3a6b4e    ld      a,(#4e6b)		; #coins per #credits
-  // 02e2  216c4e    ld      hl,#4e6c		; #leftover coins
-  // 02e5  34        inc     (hl)			; add 1
+  // 02e2  216c4e    ld      hl,#4e6c	  	; #leftover coins
+  // 02e5  34        inc     (hl)			    ; add 1
   // 02e6  96        sub     (hl)
-  // 02e7  c0        ret     nz			; not enough coins for credit
-  // 02e8  77        ld      (hl),a		; store leftover coins
+  // 02e7  c0        ret     nz			      ; not enough coins for credit
+  // 02e8  77        ld      (hl),a		    ; store leftover coins
   //-------------------------------
   if (++PARTIAL_CREDIT < COINS_PER_CREDIT)
     return;
@@ -930,11 +936,13 @@ void checkCoinCredit_02df(void) {
   PARTIAL_CREDIT -= COINS_PER_CREDIT;
 
   //-------------------------------
-  // 02e9  3a6d4e    ld      a,(#CREDITS_PER_COIN)		; #credits per
-  // #coins 02ec  216e4e    ld      hl,#4e6e	; #credits 02ef  86        add
-  // a,(hl)		; add # credits 02f0  27        daa 02f1  d2f602    jp
-  // nc,#02f6 02f4  3e99      ld      a,#99 02f6  77        ld      (hl),a
-  // ; store #credits, max 99
+  // 02e9  3a6d4e    ld      a,(#CREDITS_PER_COIN)		; #credits per #coins
+  // 02ec  216e4e    ld      hl,#4e6e	; #credits 
+  // 02ef  86        add     a,(hl)		; add # credits 
+  // 02f0  27        daa 
+  // 02f1  d2f602    jp      nc,#02f6 
+  // 02f4  3e99      ld      a,#99 
+  // 02f6  77        ld      (hl),a   ; store #credits, max 99
   //-------------------------------
   CREDITS += CREDITS_PER_COIN;
   bcdAdjust(&CREDITS);
@@ -950,6 +958,13 @@ void checkCoinCredit_02df(void) {
   CH1_SOUND_EFFECT->mask |= 2;
 }
 
+/*
+ * ISR Task
+ * This function handles two main responsibilities related to the player interface:
+ * Flashing the P1 and P2 Start Button lights on the arcade cabinet hardware.
+ * Flashing the "1UP" and "2UP" text at the top of the screen during gameplay to indicate whose turn it is.
+ * It is called every frame from the V-Blank ISR (isr_008d).
+ */
 void showStartNumPlayers_02fd(void) {
   //-------------------------------
   // 02fd  21ce4d    ld      hl,#4dce
@@ -984,7 +999,13 @@ void showStartNumPlayers_02fd(void) {
     // 0315  d601      sub     #01
     // 0317  3002      jr      nc,#031b        ; (2)
     //-------------------------------
+     
     int c = b;
+
+    /*
+       c always holds the flashing mask
+    */
+    a = CREDITS - 1;
 
     if (CREDITS < 1) {
       //-------------------------------
@@ -1003,8 +1024,8 @@ void showStartNumPlayers_02fd(void) {
     // 0321  79        ld      a,c
     // 0322  320450    ld      (#5004),a
     //-------------------------------
-    P1START = a;
-    P2START = c;
+    P1START = a;   /* P1START is actually connected to P2-start-button in cabinet... Bug*/
+    P2START = c;   /* P2START is actually connected to P1-start-button in cabinet... Bug*/
   }
 
   //-------------------------------
@@ -1073,7 +1094,10 @@ void showStartNumPlayers_02fd(void) {
     twoBlank_0390(iy);
 }
 
-/* Display "1UP" */
+/*
+   ISR Task 
+   Display "1UP" 
+*/
 void oneUp_0369(uint8_t *ix) {
   //-------------------------------
   // 0369  dd360050  ld      (ix+#00),#50
@@ -1081,12 +1105,15 @@ void oneUp_0369(uint8_t *ix) {
   // 0371  dd360231  ld      (ix+#02),#31
   // 0375  c9        ret
   //-------------------------------
-  *ix = 0x50;
-  *(ix + 1) = 0x55;
-  *(ix + 2) = 0x31;
+  *ix = 0x50;          /* "p" */
+  *(ix + 1) = 0x55;    /* "U" */
+  *(ix + 2) = 0x31;    /* "1" */
 }
 
-/* Display "2UP" */
+/*
+   ISR Task 
+   Display "2UP" 
+*/
 void twoUp_0376(uint8_t *iy) {
   //-------------------------------
   // 0376  fd360050  ld      (iy+#00),#50
@@ -1094,11 +1121,15 @@ void twoUp_0376(uint8_t *iy) {
   // 037e  fd360232  ld      (iy+#02),#32
   // 0382  c9        ret
   //-------------------------------
-  *iy = 0x50;
-  *(iy + 1) = 0x55;
-  *(iy + 2) = 0x32;
+  *iy = 0x50;         /* "p" */
+  *(iy + 1) = 0x55;   /* "U" */
+  *(iy + 2) = 0x32;   /* "2" */
 }
 
+/*
+   ISR Task 
+   Display "   " 
+*/
 void oneBlank_0383(uint8_t *ix) {
   //-------------------------------
   // 0383  dd360040  ld      (ix+#00),#40
@@ -1109,6 +1140,10 @@ void oneBlank_0383(uint8_t *ix) {
   *ix = *(ix + 1) = *(ix + 2) = 0x40;
 }
 
+/*
+   ISR Task 
+   Display "   " 
+*/
 void twoBlank_0390(uint8_t *iy) {
   //-------------------------------
   // 0390  fd360040  ld      (iy+#00),#40
@@ -1750,8 +1785,12 @@ XYPOS pacmanReverse_05a5(void) {
 
 /*  Draws the ghosts on the intro screen.  Same characters are used for each
  *  ghost but the colour varies.
- *
- *  hl = offset into video buffer, a = colour */
+ *  See character prom for the rendering of the ghosts.  The characters are drawn in a 2x3 grid.
+ *  The colour is set in the colour table for the same 2x3 grid.
+ *  The ghost is drawn at the specified offset into the video buffer.
+ *  The colour is specified by the parameter a.
+ *  hl = offset into video buffer, a = colour 
+ */
 void drawGhost_05bf(int hl, int a) {
   //-------------------------------
   // 05bf  36b1      ld      (hl),#b1
@@ -1760,15 +1799,15 @@ void drawGhost_05bf(int hl, int a) {
   // 05c4  2c        inc     l
   // 05c5  36b5      ld      (hl),#b5
   //-------------------------------
-  SCREEN[hl++] = 0xb1;
-  SCREEN[hl++] = 0xb3;
-  SCREEN[hl] = 0xb5;
+  SCREEN[hl++] = 0xb1;  /* ghost right upper  */
+  SCREEN[hl++] = 0xb3;  /* ghost right middle */
+  SCREEN[hl] = 0xb5;    /* ghost right lower  */
 
   //-------------------------------
   // 05c7  011e00    ld      bc,#001e
   // 05ca  09        add     hl,bc
   //-------------------------------
-  hl += 0x1e;
+  hl += 0x1e;           
 
   //-------------------------------
   // 05cb  36b0      ld      (hl),#b0
@@ -1777,10 +1816,10 @@ void drawGhost_05bf(int hl, int a) {
   // 05d0  2c        inc     l
   // 05d1  36b4      ld      (hl),#b4
   //-------------------------------
-  SCREEN[hl++] = 0xb0;
-  SCREEN[hl++] = 0xb2;
-  SCREEN[hl] = 0xb4;
-
+  SCREEN[hl++] = 0xb0; /* ghost left upper  */
+  SCREEN[hl++] = 0xb2; /* ghost left middle */
+  SCREEN[hl] = 0xb4;   /* ghost left lower  */
+ 
   //-------------------------------
   // 05d3  110004    ld      de,#0400
   // 05d6  19        add     hl,de
@@ -1961,7 +2000,7 @@ void checkStartButtons_061b(void) {
   // 0664  21034e    ld      hl,#4e03
   // 0667  34        inc     (hl)
   //-------------------------------
-  CREDIT_STATE++;
+  CREDIT_STATE++; /* advance creditStateMachine */
 
   //-------------------------------
   // 0668  af        xor     a
@@ -2036,7 +2075,7 @@ void incMainSub2_06a3(void) {
   // 06a6  34        inc     (hl)
   // 06a7  c9        ret
   //-------------------------------
-  CREDIT_STATE++;
+  CREDIT_STATE++; /* advance creditStateMachine */
 }
 
 void creditStateReset_06a8(void) {
@@ -3321,6 +3360,14 @@ void ghostsFlashBecomingInedible_0ac3(void) {
   GHOST_COL_POWERUP_COUNTER--;
 }
 
+/*
+ * Normally, a ghost's color is determined by its identity (Red for Blinky, Pink for Pinky, etc.) or 
+ * by the power pellet timer (Blue or flashing White). When a ghost is eaten, the sprite tile changes 
+ * from a ghost body to a pair of eyes, but the color palette must also be forced to the eye colors, 
+ * overriding whatever normal or blue colors it previously had. Because the ghosts are constantly 
+ * animating and moving, this function runs every frame to ensure any dead ghost's color stays locked 
+ * to the "eyes" palette until it reaches the house and its state returns to ALIVE (0).
+ */
 void setGhostColour_0bd6(void) {
   //-------------------------------
   // 0bd6  0619      ld      b,#19
@@ -3328,6 +3375,12 @@ void setGhostColour_0bd6(void) {
   // 0bdb  fe22      cp      #22
   // 0bdd  c2e20b    jp      nz,#0be2
   //-------------------------------
+ /*
+  *  By default, it uses palette 0x19, which maps to the floating eyes colors.
+  *  The Exception: If the game is currently in the Attract Mode / Demo sequence (MAIN_STATE == 1), 
+  *  and it is specifically at INTRO_STATE == 0x22 (the moment after giant Pac-Man chases the ghosts off-screen), 
+  *  it sets the palette to 0, making the ghosts invisible so they disappear cleanly.
+  */
   int b = 0x19;
   if (INTRO_STATE == 0x22) {
     //-------------------------------
@@ -3342,6 +3395,11 @@ void setGhostColour_0bd6(void) {
   // 0be9  a7        and     a
   // 0bea  caf00b    jp      z,#0bf0
   //-------------------------------
+  
+  /*
+   * If the state is non-zero (meaning the ghost is DEAD (1), ENTER_HOUSE (2), or HOUSE_MOVE (3)), 
+   * it overwrites the ghost's sprite color attribute with the selected palette (b).
+   */
   if (BLINKY_STATE) {
     //-------------------------------
     // 0bed  dd7003    ld      (ix+#03),b
