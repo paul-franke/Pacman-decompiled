@@ -118,7 +118,7 @@ void updatePillsEatenSoundEffect_0e6c(void);
 void selectFruit_0ead(void);
 void resetFruit_1000(void);
 void resetFruitState_1004(void);
-void func_100b(void);
+void eraseFruitPoints_100b(void);
 void updateGhostStates_1017(void);
 void selectGhostState_1066(void);
 void blinkyStateMachine_1094(void);

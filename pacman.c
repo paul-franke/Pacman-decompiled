@@ -675,9 +675,12 @@ void updateCounters_01dc(void) {
 // 0219  06 a0 0a 60 0a 60 0a a0
 //-------------------------------
 
-/*  Dispatch tasks in the queue once their timer expires.  The time value is the
+/*  
+ * ISR TASK
+ *  Dispatch tasks in the queue once their timer expires.  The time value is the
  *  lower 6 bits of the delay value.  The upper 2 bits are the units
- *  (tenths of a second, seconds, 10 seconds or 1 minute) */
+ *  (tenths of a second, seconds, 10 seconds or 1 minute)  
+ */
 void dispatchISRTasks_0221(void) {
   //-------------------------------
   // 0221  21904c    ld      hl,#4c90
@@ -746,7 +749,7 @@ void dispatchISRTasks_0221(void) {
                               incMainStateIntro_058e,
                               incKilledState_1272, // 3 ISRTASK_INC_KILLED_STATE
                               resetFruit_1000,     // 4 ISRTASK_RESET_FRUIT
-                              func_100b,
+                              eraseFruitPoints_100b,
                               displayReady_0263,
                               incScene1State_212b,
                               incScene2State_21f0,
@@ -770,6 +773,10 @@ void dispatchISRTasks_0221(void) {
   //-------------------------------
 }
 
+/*
+ * ISR Task  
+ * Only queue a non ISR task to display the "READY" message if the game is not in demo mode. 
+ */
 void displayReady_0263(void) {
   //-------------------------------
   // 0263  ef        rst     #28
@@ -779,7 +786,10 @@ void displayReady_0263(void) {
   schedTask(TASK_DISPLAY_MSG, 0x80 | MSG_READY);
 }
 
-/*  Check/debounce coin inputs */
+/*
+ * ISR Task  
+ * Check/debounce coin inputs 
+ */
 void checkCoinInput_0267(void) {
   //-------------------------------
   // 0267  3a6e4e    ld      a,(#4e6e)
@@ -789,17 +799,42 @@ void checkCoinInput_0267(void) {
   // 0270  1f        rra
   // 0271  d0        ret     nc
   //-------------------------------
-  COINLOCKOUT = CREDITS << 1;
 
-  if (CREDITS >= 0x99)
+  if (CREDITS >= 0x99) {
+    COINLOCKOUT = 0;   // Do not accept any money */
     return;
+  }
+  COINLOCKOUT = 1;
 
+  /*
+   * Every frame (1/60th of a second), it reads the current state of the switch (1 if pressed, 0 if not). 
+   * It shifts the old history left by 1 and inserts the new state at the bottom, 
+   * keeping only the last 4 frames (the & 0x0f mask).
+   * This turns the byte into a 4-frame history. For example:
+
+   * 0000 (0) = Switch has been open for at least 4 frames.
+   * 0001 (1) = Switch just closed this frame.
+   * 0011 (3) = Switch has been closed for 2 frames.
+   * 0111 (7) = Switch has been closed for 3 frames.
+   * 1111 (15) = Switch has been closed for 4+ frames.
+  */
+  /*
+   * It checks if the history equals 12 (1100 in binary). What does 1100 mean? 
+   * Two frames ago and three frames ago, the switch was CLOSED (11..).
+   * Last frame and this frame, the switch was OPEN (..00).
+   * This specific pattern means: The switch was pressed, held for a short time, 
+   * and has now been cleanly released for two consecutive frames. 
+   * By waiting for the switch to cleanly open, it guarantees it only 
+   * counts the coin exactly once as it finishes falling through the mechanism.  
+  */
   //-------------------------------
   // 0272  3a0050    ld      a,(#5000)            ; read IN0
   // 0275  47        ld      b,a
-  // 0276  cb00      rlc     b                    ; Move MSB (CREDIT) to carry
-  // flag 0278  3a664e    ld      a,(#4e66) 027b  17        rla ; Rotate carry
-  // flag to LSB 027c  e60f      and     #0f 027e  32664e    ld      (#4e66),a
+  // 0276  cb00      rlc     b                    ; Move MSB (CREDIT) to carry flag 
+  // 0278  3a664e    ld      a,(#4e66) 
+  // 027b  17        rla                           ; Rotate carry flag to LSB 
+  // 027c  e60f      and     #0f 
+  // 027e  32664e    ld      (#4e66),a
   //-------------------------------
   SERVICE1_DEBOUNCE = ((SERVICE1_DEBOUNCE << 1) & 0x0f) | (IN0_CREDIT ? 1 : 0);
 
@@ -811,9 +846,11 @@ void checkCoinInput_0267(void) {
     checkCoinCredit_02df();
 
   //-------------------------------
-  // 0286  cb00      rlc     b                    ; Move MSB (COIN2) to carry
-  // flag 0288  3a674e    ld      a,(#4e67) 028b  17        rla 028c  e60f and
-  // #0f 028e  32674e    ld      (#4e67),a
+  // 0286  cb00      rlc     b                    ; Move MSB (COIN2) to carry flag 
+  // 0288  3a674e    ld      a,(#4e67) 
+  // 028b  17        rla 
+  // 028c  e60f and #0f 
+  // 028e  32674e    ld      (#4e67),a
   //-------------------------------
   COIN2_DEBOUNCE = ((COIN2_DEBOUNCE << 1) & 0x0f) | (IN0_COIN2 ? 1 : 0);
 
@@ -825,11 +862,12 @@ void checkCoinInput_0267(void) {
   //-------------------------------
   if (COIN2_DEBOUNCE == 0xc)
     COIN_COUNTER++;
-
+  
   //-------------------------------
-  // 029a  cb00      rlc     b                    ; Move MSB (COIN1) to carry
-  // flag 029c  3a684e    ld      a,(#4e68) 029f  17        rla 02a0  e60f and
-  // #0f
+  // 029a  cb00      rlc     b                    ; Move MSB (COIN1) to carry flag 
+  // 029c  3a684e    ld      a,(#4e68) 
+  // 029f  17        rla 
+  // 02a0  e60f and #0f
   //-------------------------------
   COIN1_DEBOUNCE = ((COIN1_DEBOUNCE << 1) & 0x0f) | (IN0_COIN1 ? 1 : 0);
 
@@ -850,6 +888,11 @@ void checkCoinInput_0267(void) {
   COIN_COUNTER++;
 }
 
+/*
+ * ISR Task
+ * is responsible for driving the physical electromechanical coin counter inside the arcade cabinet.
+ * and for granting the player a game credit when enough coins have been inserted.
+ */
 void checkCoinCounterTimeout_02ad(void) {
   //-------------------------------
   // 02ad  3a694e    ld      a,(#4e69)
@@ -872,8 +915,9 @@ void checkCoinCounterTimeout_02ad(void) {
     // 02be  320750    ld      (#5007),a    ; coin counter = 1
     // 02c1  cddf02    call    #02df
     //-------------------------------
-    COIN_COUNTER = 1;
-    checkCoinCredit_02df();
+    COINCOUNTER = 1;         // start pulse to coin meter
+    checkCoinCredit_02df();  // Gran the game credit
+    
   }
 
   //-------------------------------
@@ -886,7 +930,7 @@ void checkCoinCounterTimeout_02ad(void) {
     // 02ca  af        xor     a
     // 02cb  320750    ld      (#5007),a    ; zero coin counter
     //-------------------------------
-    COINCOUNTER = 0;
+    COINCOUNTER = 0;        // End pulse to coin meter
   }
 
   //-------------------------------
@@ -910,6 +954,12 @@ void checkCoinCounterTimeout_02ad(void) {
   // 02db  32694e    ld      (#4e69),a
   // 02de  c9        ret
   //-------------------------------
+
+  /*
+   * The timer keeps counting until it hits 16 frames (about 266 ms). 
+   * This provides an 8-frame "cool down" period after the solenoid turns off. 
+   * Mechanical meters can jam if you pulse them too fast, so this ensures a safe gap between coins.
+   */
   COIN_COUNTER_TIMEOUT -= 0x10;
   COIN_COUNTER--;
 }
@@ -4130,13 +4180,19 @@ void updatePillsEatenSoundEffect_0e6c(void) {
   CH2_SOUND_EFFECT->mask = (CH2_SOUND_EFFECT->mask & 0xe0) | 0x01;
 }
 
+/*
+ * ISR
+ * This function, selectFruit_0ead, runs every frame during gameplay (called from the V-Blank ISR via gamePlay_0ac1).
+ * Its job is to spawn the fruit in the middle of the maze at the exact correct moments 
+ * (when Pac-Man has eaten 70 dots, and again at 170 dots).
+*/
 void selectFruit_0ead(void) {
   //-------------------------------
   // 0ead  3aa54d    ld      a,(#4da5)
   // 0eb0  a7        and     a
   // 0eb1  c0        ret     nz
   //-------------------------------
-  if (PAC_DEAD_ANIM_STATE != 0)
+  if (PAC_DEAD_ANIM_STATE != 0)   // pacman is dead, don't spawn fruit
     return;
 
   //-------------------------------
@@ -4144,7 +4200,7 @@ void selectFruit_0ead(void) {
   // 0eb5  a7        and     a
   // 0eb6  c0        ret     nz
   //-------------------------------
-  if (FRUIT_POINTS != 0)
+  if (FRUIT_POINTS != 0)           // fruit is already on the screen, don't spawn another
     return;
 
   //-------------------------------
@@ -4165,7 +4221,7 @@ void selectFruit_0ead(void) {
     // 0ec4  a7        and     a
     // 0ec5  c0        ret     nz
     //-------------------------------
-    if (P1_SECOND_FRUIT != 0)
+    if (P1_SECOND_FRUIT != 0)      // already a second fruit spawned, don't spawn another
       return;
 
     //-------------------------------
@@ -4252,8 +4308,14 @@ void selectFruit_0ead(void) {
   //-------------------------------
 }
 
-/*  Fruit data.  3 byte sets contains sprite, colour and points */
-
+/*  
+ *Fruit data.  3 byte sets contains sprite, colour and points 
+ * data is read by selectFruit_0ead():
+ * hl = hl * P1_LEVEL
+ * FRUIT_SPRITE = hl[0];            // Gets [Sprite ID]
+ * FRUIT_COLOUR = hl[1];            // Gets [Color Palette]
+ * FRUIT_POINTS = hl[2];            // Gets [Point Value ID]
+*/
 //-------------------------------
 // 0efd                                          00 14 06
 // 0f00  01 0f 07 02 15 08 02 15  08 04 14 09 04 14 09 05
@@ -4292,7 +4354,11 @@ void resetFruitState_1004(void) {
   FRUIT_POS.y = FRUIT_POS.x = 0;
 }
 
-void func_100b(void) {
+/*
+ * ISR task
+ * Schedules a non ISR task to erase the fruit points from the screen/
+*/
+void eraseFruitPoints_100b(void) {
   //-------------------------------
   // 100b  ef        rst     #28
   // 100c  1c9b
