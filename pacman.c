@@ -1627,17 +1627,24 @@ void demoMazeHorizontal_0506(void) {
   //-------------------------------
 }
 
+/*
+ * ISR/VBLANK
+ * Set trigger for Blinky to appear on screen
+*/
 void introStartMoveBlinky_051c(void) {
   //-------------------------------
   // 051c  21a04d    ld      hl,#4da0
   // 051f  0621      ld      b,#21
   // 0521  3a3a4d    ld      a,(#4d3a)
   //-------------------------------
-  introAdvanceState_0524(&BLINKY_SUBSTATE, 0x21, PACMAN_TILE2.x);
+  introAdvanceState_0524(&BLINKY_SUBSTATE, 0x21, PACMAN_TILE2.x);  // Blinky has already reached its destination tile, so we can set it to chase mode and let him move to the visible area. 
+                                                                   // The next intro state is set to 0x25, which will trigger Pinky to appear on screen when Blinky has reached tile 0x24.
 }
 
-/*  Advance the intro state and update the ghost substate to chase when a ghost
- *  (or pacman) reaches a specified x tile. */
+/*
+ * ISR/VBLANK
+ * This function is called every frame during the intro demo. It updates the ghosts' states, animates them, flashes powerups, and checks for any necessary reversals.
+ */
 void introAdvanceState_0524(uint8_t *ghostSubstate, int target, int tile) {
   //-------------------------------
   // 0524  90        sub     b
@@ -1645,16 +1652,20 @@ void introAdvanceState_0524(uint8_t *ghostSubstate, int target, int tile) {
   // 0527  3601      ld      (hl),#01
   // 0529  c38e05    jp      #058e
   //-------------------------------
-  if (tile != target) {
+  if (tile != target) { // Blinky has not reached the target tile yet, so keep moving
     introMain_052c();
     return;
   }
 
-  *ghostSubstate = SUBSTATE_CHASE;
-  incMainStateIntro_058e();
+  *ghostSubstate = SUBSTATE_CHASE;   // set the ghost to chase mode... This will allow the ghost to move to the visible area, done by updateGhostStates_1017(), which is called every frame.
+  incMainStateIntro_058e();          // set next intro state
   return;
 }
 
+/*
+ * ISR/VBLANK
+ * This function is called every frame during the intro demo. It updates the ghosts' states, animates them, flashes powerups, and checks for any necessary reversals.
+ */
 void introMain_052c(void) {
   //-------------------------------
   // 052c  cd1710    call    #1017
@@ -1669,18 +1680,22 @@ void introMain_052c(void) {
   // 0547  cd731f    call    #1f73
   // 054a  c9        ret
   //-------------------------------
-  updateGhostStates_1017();
-  updateGhostStates_1017();
-  toggleGhostAnimation_0e23();
-  flashPowerups_0c0d();
-  setGhostColour_0bd6();
-  pacmanReverse_05a5();
-  blinkyCheckReverse_1efe();
-  pinkyCheckReverse_1f25();
-  inkyCheckReverse_1f4c();
-  clydeCheckReverse_1f73();
+  updateGhostStates_1017();    // move the ghosts with double speed
+  updateGhostStates_1017();    //
+  toggleGhostAnimation_0e23(); // animate the ghosts skirts
+  flashPowerups_0c0d();        // toggles the powerup tiles between the two frames of animation (frame 1 and frame 2)
+  setGhostColour_0bd6();       // sets the colour of the ghosts based on their current state (chase, scatter, frightened, eaten)
+  pacmanReverse_05a5();        // checks respective character's flag. If the flag is set to 1, the function immediately forces that character to pull a 180-degree U-turn, clears the flag
+  blinkyCheckReverse_1efe();   // checks respective character's flag. If the flag is set to 1, the function immediately forces that character to pull a 180-degree U-turn, clears the flag
+  pinkyCheckReverse_1f25();    // checks respective character's flag. If the flag is set to 1, the function immediately forces that character to pull a 180-degree U-turn, clears the flag
+  inkyCheckReverse_1f4c();     // checks respective character's flag. If the flag is set to 1, the function immediately forces that character to pull a 180-degree U-turn, clears the flag
+  clydeCheckReverse_1f73();    // checks respective character's flag. If the flag is set to 1, the function immediately forces that character to pull a 180-degree U-turn, clears the flag
 }
 
+/*
+ * ISR/VBLANK
+ * Set trigger for Pinky to appear on screen when Blinky has reached tile 0x24
+*/
 void introStartMovePinky_054b(void) {
   //-------------------------------
   // 054b  21a14d    ld      hl,#4da1
@@ -1691,6 +1706,10 @@ void introStartMovePinky_054b(void) {
   introAdvanceState_0524(&PINKY_SUBSTATE, 0x20, BLINKY_TILE2.x);
 }
 
+/*
+ * ISR/VBLANK
+ * Set trigger for Inky to appear on screen when Blinky has reached tile 0x24
+*/
 void introStartMoveInky_0556(void) {
   //-------------------------------
   // 0556  21a24d    ld      hl,#4da2
@@ -1701,6 +1720,10 @@ void introStartMoveInky_0556(void) {
   introAdvanceState_0524(&INKY_SUBSTATE, 0x22, BLINKY_TILE2.x);
 }
 
+/*
+ * ISR/VBLANK
+ * Set trigger for Clyde to appear on screen whem Blinky has reached tile 0x24
+*/
 void introStartMoveClyde_0561(void) {
   //-------------------------------
   // 0561  21a34d    ld      hl,#4da3
@@ -1711,6 +1734,11 @@ void introStartMoveClyde_0561(void) {
   introAdvanceState_0524(&CLYDE_SUBSTATE, 0x24, BLINKY_TILE2.x);
 }
 
+/*
+ * ISR/VBLANK
+ * This function starts the demo game after all ghosts have been eaten in the intro screen. It checks if the number of ghosts killed is equal to 4, 
+ * and the animation for the last ghost is complete, i..e. KILLED_STATE=2
+*/
 void introCheckAllGhostsEaten_056c(void) {
   //-------------------------------
   // 056c  3ad04d    ld      a,(#4dd0)
@@ -1721,16 +1749,20 @@ void introCheckAllGhostsEaten_056c(void) {
   // 0576  ca8e05    jp      z,#058e
   //-------------------------------
   if (KILLED_COUNT + KILLED_STATE == 6) {
-    incMainStateIntro_058e();
+    incMainStateIntro_058e(); // increment state and go on to start the demo game
     return;
   }
 
   //-------------------------------
   // 0579  c32c05    jp      #052c
   //-------------------------------
-  introMain_052c();
+  introMain_052c(); // contue the intro demo
 }
 
+/*
+ * ISR/VBLANK
+ * This function is used to play a demo game 
+*/
 void introPlayGame_057c(void) {
   //-------------------------------
   // 057c  cdbe06    call    #06be
@@ -1739,6 +1771,11 @@ void introPlayGame_057c(void) {
   playGameStateMachine_06be();
 }
 
+/*
+ * ISR/VBLANK
+ * This function is used to display CLYDE's name in the intro screen and advance to the next state.
+ * Because Clyde is the last ghost to be introduced! During the attract mode, uses a slightly larger delay to display the ghost name on the screen.
+*/
 void selectDisplayGhostName_0580(int c) {
   //-------------------------------
   // 0580  3a754e    ld      a,(#4e75)
@@ -1752,31 +1789,46 @@ void selectDisplayGhostName_0580(int c) {
   displayIntroMsg_0585(c);
 }
 
+/*
+ * ISR/VBLANK
+ * This function is used to display CLYDE's name in the intro screen and advance to the next state.
+ * Because Clyde is the last ghost to be introduced! During the attract mode, uses a slightly larger delay to display the ghost name on the screen.
+*/
 void displayIntroMsg_0585(int c) {
   //-------------------------------
   // 0585  061c      ld      b,#1c
   // 0587  cd4200    call    #0042
   //-------------------------------
-  addTask_0042(TASK_DISPLAY_MSG, c);
+  addTask_0042(TASK_DISPLAY_MSG, c); // CPU heavy non ISR task to display the ghost name on the screen
 
   //-------------------------------
   // 058a  f7        rst     #30
   // 058b  4a0200
   //-------------------------------
-  schedISRTask(0x4a, ISRTASK_INC_INTRO_STATE, 0x00);
+  schedISRTask(0x4a, ISRTASK_INC_INTRO_STATE, 0x00);// wait task that expires after 0x45 frames (1.23 seconds) and then increments 
+                                                      // the intro state machine to the next state: introduce next ghost...
 
-  incMainStateIntro_058e();
+  incMainStateIntro_058e(); // Intro state machine is advanced to the next state
 }
 
+/*
+ * ISR/VBLANK
+ * This function is used to advance to the next state of the intro screen state machine.
+*/
 void incMainStateIntro_058e(void) {
   //-------------------------------
   // 058e  21024e    ld      hl,#4e02
   // 0591  34        inc     (hl)
   // 0592  c9        ret
   //-------------------------------
-  INTRO_STATE++;
+  INTRO_STATE++; // Intro state machine is advanced to the next state
 }
 
+/*
+ * ISR/VBLANK
+ * This function is used to display the ghosts' names and in the intro screen, advance to the next state.
+ * Used for "CHARACTER", "BLINKY", "PINKY", "INKY"
+*/
 void introduceGhost_0593(int c) {
   //-------------------------------
   // 0593  3a754e    ld      a,(#4e75)
@@ -1785,7 +1837,7 @@ void introduceGhost_0593(int c) {
   // 0598  061c      ld      b,#1c
   // 059a  cd4200    call    #0042
   //-------------------------------
-  addTask_0042(TASK_DISPLAY_MSG, c + GHOST_NAMES_MODE);
+  addTask_0042(TASK_DISPLAY_MSG, c + GHOST_NAMES_MODE); // CPU heavy non ISR task to display the ghost name on the screen
 
   //-------------------------------
   // 059d  f7        rst     #30
@@ -1793,10 +1845,16 @@ void introduceGhost_0593(int c) {
   // 05a1  cd8e05    call    #058e
   // 05a4  c9        ret
   //-------------------------------
-  schedISRTask(0x45, ISRTASK_INC_INTRO_STATE, 0x00);
-  incMainStateIntro_058e();
+  schedISRTask(0x45, ISRTASK_INC_INTRO_STATE, 0x00);  // wait task that expires after 0x45 frames (1.15 seconds) and then increments 
+                                                      // the intro state machine to the next state: introduce next ghost...
+  incMainStateIntro_058e(); // Intro state machine is advanced to the next state
 }
 
+/*
+ * ISR/VBLANK
+ * This function is used to reverse Pac-Man's direction during the cutscenes and attract
+ * Unlike normal gameplay (where the player's joystick input dictates when Pac-Man turns). 
+*/
 XYPOS pacmanReverse_05a5(void) {
   //-------------------------------
   // 05a5  3ab54d    ld      a,(#4db5)
@@ -1807,7 +1865,6 @@ XYPOS pacmanReverse_05a5(void) {
 
   if (PACMAN_ORIENT_CHG_FLAG == 0)
     return vector;
-
   //-------------------------------
   // 05aa  af        xor     a
   // 05ab  32b54d    ld      (#4db5),a
@@ -1820,7 +1877,12 @@ XYPOS pacmanReverse_05a5(void) {
   // 05b3  323c4d    ld      (#4d3c),a
   //-------------------------------
   PACMAN_DESIRED_ORIENTATION = PACMAN_ORIENTATION ^ 2;
-
+  /*
+  // 0 = Right (Binary 00) ==> Left (Binary 10)
+  // 1 = Down (Binary 01) ==> Up (Binary 11)
+  // 2 = Left (Binary 10) ==> Right (Binary 00)
+  // 3 = Up (Binary 11) ==> Down (Binary 01)
+  */
   //-------------------------------
   // 05b6  47        ld      b,a
   // 05b7  21ff32    ld      hl,#32ff
@@ -1829,6 +1891,12 @@ XYPOS pacmanReverse_05a5(void) {
   // 05be  c9        ret
   //-------------------------------
   vector = MOVE_VECTOR_DATA[PACMAN_DESIRED_ORIENTATION];
+ /*
+  * 0 (Right) = { -1,  0 }
+  * 1 (Down) = {  0,  1 }
+  * 2 (Left) = {  1,  0 }
+  * 3 (Up) = {  0, -1 }
+  */
   PACMAN_VECTOR2 = vector;
   return vector;
 }
@@ -4029,6 +4097,13 @@ void toggleGhostAnimation_0e23(void) {
   GHOST_ANIMATION ^= 1;
 }
 
+/*
+ * ISR (VBLANK)
+ * This function is the master clock for the Scatter/Chase wave timer.
+ * NONRANDOM_MOVEMENT: 0=Scatter, 1=Chase, 2=Scatter, 3=Chase, 4=Scatter, 5=Chase, 6=Scatter, 7=Chase.
+ * NONRANDOM_MOVEMENT value is queried by the AI-logic to determine whether the ghosts are in Scatter or Chase mode.
+ *  for example: see blinkyScatterOrChase_2730
+*/
 void ghostsChangeOrientation_0e36(void) {
   //-------------------------------
   // 0e36  3aa64d    ld      a,(#4da6)
@@ -4043,7 +4118,7 @@ void ghostsChangeOrientation_0e36(void) {
   // 0e3e  fe07      cp      #07
   // 0e40  c8        ret     z
   //-------------------------------
-  if (NONRANDOM_MOVEMENT == 7)
+  if (NONRANDOM_MOVEMENT == 7)  // maximum number of orientation changes reached, do not change orientation
     return;
 
   //-------------------------------
@@ -4075,7 +4150,7 @@ void ghostsChangeOrientation_0e36(void) {
   // 0e5e  3c        inc     a
   // 0e5f  32c14d    ld      (#4dc1),a
   //-------------------------------
-  NONRANDOM_MOVEMENT++;
+  NONRANDOM_MOVEMENT++;   // Advance to the next wave (e.g. Scatter -> Chase or chase-> Scatter)
 
   //-------------------------------
   // 0e62  210101    ld      hl,#0101
@@ -4083,9 +4158,22 @@ void ghostsChangeOrientation_0e36(void) {
   // 0e68  22b34d    ld      (#4db3),hl
   // 0e6b  c9        ret
   //-------------------------------
+
   BLINKY_ORIENT_CHG_FLAG = PINKY_ORIENT_CHG_FLAG = INKY_ORIENT_CHG_FLAG =
       CLYDE_ORIENT_CHG_FLAG = 1;
 }
+
+/*
+ * ISR
+ * This function, updatePillsEatenSoundEffect_0e6c, runs every frame during gameplay (called from the V-Blank ISR via gamePlay_0ac1).
+ * Its job is to update the Siren frequency sound effect based on the number of pills eaten by Pac-Man.
+ * 
+ * The hardware sound chip handles multiple sound effects on the same channel using bitmasks.
+ * The top 3 bits (0xE0, which is 11100000 in binary) might be used for other sound flags 
+ * The bottom 5 bits (0x1F) are exclusively used for these 5 siren sounds.
+ * By doing (mask & 0xE0) | 0x0X, the code preserves whatever is happening in the top 3 bits, clears all 5 of the siren bits, 
+ * and then turns on exactly one of the siren bits corresponding to the current dot count.
+*/
 
 void updatePillsEatenSoundEffect_0e6c(void) {
   //-------------------------------
@@ -4184,7 +4272,7 @@ void updatePillsEatenSoundEffect_0e6c(void) {
  * ISR
  * This function, selectFruit_0ead, runs every frame during gameplay (called from the V-Blank ISR via gamePlay_0ac1).
  * Its job is to spawn the fruit in the middle of the maze at the exact correct moments 
- * (when Pac-Man has eaten 70 dots, and again at 170 dots).
+ * (when Pac-Man has eaten 70 (0x46) dots, and again at 170 (0xaa) dots).
 */
 void selectFruit_0ead(void) {
   //-------------------------------
@@ -4221,7 +4309,7 @@ void selectFruit_0ead(void) {
     // 0ec4  a7        and     a
     // 0ec5  c0        ret     nz
     //-------------------------------
-    if (P1_SECOND_FRUIT != 0)      // already a second fruit spawned, don't spawn another
+    if (P1_SECOND_FRUIT != 0)      // already a second fruit spawned, don't spawn another. the next pill may taken multiple interrupts
       return;
 
     //-------------------------------
@@ -4239,7 +4327,7 @@ void selectFruit_0ead(void) {
   // 0ecf  a7        and     a
   // 0ed0  c0        ret     nz
   //-------------------------------
-  if (P1_FIRST_FRUIT != 0)
+  if (P1_FIRST_FRUIT != 0)  // already a first fruit spawned, don't spawn another. the next pill may taken multiple interrupts
     return;
 
   //-------------------------------
@@ -4302,6 +4390,14 @@ void selectFruit_0ead(void) {
   // 0ef9  8a0400
   //-------------------------------
   schedISRTask(0x8a, ISRTASK_RESET_FRUIT, 0);
+  
+  /*
+   * schedules an ISR task to run in 0x8a frames (about 2.3 seconds). 
+   * If Pac-Man hasn't eaten the fruit before this timer expires, 
+   * ISRTASK_RESET_FRUIT (which maps to resetFruit_1000) will run, 
+   * setting FRUIT_POINTS = 0 and erasing the sprite coordinates, 
+   * causing the fruit to vanish.
+  */
 
   //-------------------------------
   // 0efc  c9        ret
@@ -9758,6 +9854,18 @@ void initSelfTest_230b(void) {
   mainTaskLoop_234b();
 }
 
+
+/*
+ * Main Background Dispatcher of the game. It runs continuously between V-Blank interrupts, 
+ * processing "heavy" jobs that are too slow to run inside the ISR (Interrupt Service Routine).
+ *
+ * This architecture is called a "Foreground/Background System":
+ * 
+ * Foreground (ISR): Runs exactly 60 times a second, handles timing, player input, ghost/pacman movement, and audio. 
+ * It has strict deadlines.
+ * Background (This Main Loop): A continuous loop that processes a queue of rendering/state tasks 
+ * (like drawing the maze, updating the score, pathfinding) as fast as it can.
+ */
 void mainTaskLoop_234b(void) {
   //-------------------------------
   // 234b  32c050    ld      (#50c0),a	; Kick the dog
@@ -10823,7 +10931,7 @@ void blinkyScatterOrChase_2730(int param) {
   // 2733  cb47      bit     0,a
   // 2735  c25827    jp      nz,#2758
   //-------------------------------
-  if ((NONRANDOM_MOVEMENT & 1) == 0) {
+  if ((NONRANDOM_MOVEMENT & 1) == 0) { // values 0, 2, 4 & 6 are Scatter, 1, 3, 5 & 7 are Chase
     //-------------------------------
     // 2738  3ab64d    ld      a,(#4db6)
     // 273b  a7        and     a
@@ -14559,63 +14667,63 @@ void delay_32ed(void) {
 /*  Next move pattern */
 
 //-------------------------------
-// 3339  52 4a a5 94
-//       aa 2a 55 55
-//       55 2a 55 2a
-//       52 4a a5 94
-//       92 24 25 49
-//       48 24 22 91
-//       01 01 01 01
+// 3339  52 4a a5 94 // pacman normal -  14 of 32 = 43.75%
+//       aa 2a 55 55 // pacman powered - 15 of 32 = 46.875%
+//       55 2a 55 2a // blinky difficulty2 - 14 if 32 = 44%
+//       52 4a a5 94 // blinky difficulty1 - 13 of 32 = 41%
+//       92 24 25 49 // ghost normal - 11 of 32 = 34.375%
+//       48 24 22 91 // ghost edible - 9 of 32 = 28.125%
+//       01 01 01 01 // ghost tunnel - 4 of 32 = 12.5%
 
 //       00 00 00 00 00 00 00 00 00 00 00 00 00 00
 
-//       55 2a 55 2a
-//       55 55 55 55
-//       aa 2a 55 55
-//       55 2a 55 2a
-//       52 4a a5 94
-//       48 24 22 91
-//       21 44 44 08
+//       55 2a 55 2a // pacman normal - 14 if 32 = 44%
+//       55 55 55 55 // pacman powered - 16 of 32 = 50%
+//       aa 2a 55 55 // blinky difficulty2 - 15 of 32 = 46.875%
+//       55 2a 55 2a // blinky difficulty1 - 14 if 32 = 44%
+//       52 4a a5 94 // ghost normal - 13 of 32 = 41%
+//       48 24 22 91 // ghost edible - 9 of 32 = 28.125%
+//       21 44 44 08 // ghost tunnel - 7 of 32 = 21.875%
 
 //       58 02 34 08 d8 09 b4 0f 58 11 08 16 34 17
 
-//       55 55 55 55
-//       d5 6a d5 6a
-//       aa 6a 55 d5
-//       55 55 55 55
-//       aa 2a 55 55
-//       92 24 92 24
-//       22 22 22 22
+//       55 55 55 55 // pacman normal - 16 of 32 = 50%
+//       d5 6a d5 6a // pacman powered - 18 of 32 = 56%
+//       aa 6a 55 d5 // blinky difficulty2 - 17 of 32 = 53%
+//       55 55 55 55 // blinky difficulty1 - 16 of 32 = 50%
+//       aa 2a 55 55 // ghost normal - 15 of 32 = 46.875%
+//       92 24 92 24 // ghost edible - 10 of 32 = 31.25%
+//       22 22 22 22 // ghost tunnel - 8 of 32 = 25%
 
 // 33a9  a4 01 54 06 f8 07 a8 0c d4 0d 84 12 b0 13
 
-// 33b7  d5 6a d5 6a
-// 33bb  d6 5a ad b5
-// 33bf  d6 5a ad b5
-// 33c3  d5 6a d5 6a
-// 33c7  aa 6a 55 d5
-// 33cb  92 24 25 49
-// 33cf  48 24 22 91
+// 33b7  d5 6a d5 6a // pacman normal - 18 of 32 = 56%
+// 33bb  d6 5a ad b5 // pacman powered - 19 of 32 = 59.375%
+// 33bf  d6 5a ad b5 // blinky difficulty2 - 17 of 32 = 53%
+// 33c3  d5 6a d5 6a // blinky difficulty1 - 16 of 32 = 50%
+// 33c7  aa 6a 55 d5 // ghost normal - 15 of 32 = 46.875%
+// 33cb  92 24 25 49 // ghost edible - 11 of 32 = 34.375%
+// 33cf  48 24 22 91 // ghost tunnel - 9 of 32 = 28.125%
 
 // 33d3  a4 01 54 06 f8 07 a8 0c d4 0d fe ff ff ff
 
-// 33e1  6d 6d 6d 6d
-// 33e5  6d 6d 6d 6d
-// 33e9  b6 6d 6d db
-// 33ed  6d 6d 6d 6d
-// 33f1  d6 5a ad b5
-// 33f5  25 25 25 25
-// 33f9  92 24 92 24
+// 33e1  6d 6d 6d 6d // pacman normal - 20 of 32 = 62.5%
+// 33e5  6d 6d 6d 6d // pacman powered - 20 of 32 = 62.5%
+// 33e9  b6 6d 6d db // blinky difficulty2 - 21 of 32 = 65.625%
+// 33ed  6d 6d 6d 6d // blinky difficulty1 - 20 of 32 = 62.5%
+// 33f1  d6 5a ad b5 // ghost normal - 19 of 32 = 59.375%
+// 33f5  25 25 25_25 // ghost edible - 10 of 32 = 31.25%
+//  
 
 // 33fd  2c 01 dc 05 08 07 b8 0b e4 0c fe ff ff ff
 
 // 340b  d5 6a d5 6a // pacman normal - 18 of 32 = 56%
-// 340f  d5 6a d5 6a // pacman powered - 18
-// 3413  b6 6d 6d db // diff2 - 21
-// 3417  6d 6d 6d 6d // diff1 - 20
-// 341b  d6 5a ad b5 // ghost normal - 19
-// 341f  48 24 22 91 // ghost edible - 9
-// 3423  92 24 92 24 // ghost tunnel - 10
+// 340f  d5 6a d5 6a // pacman powered - 18 of 32 = 56%
+// 3413  b6 6d 6d db // blinky difficulty2 - 21 of 32 = 65.625%
+// 3417  6d 6d 6d 6d // blinky difficulty1 - 20 of 32 = 62.5%
+// 341b  d6 5a ad b5 // ghost normal - 19 of 32 = 59.375%
+// 341f  48 24 22 91 // ghost edible - 9 of 32 = 28.125%
+// 3423  92 24 92 24 // ghost tunnel - 10 of 32 = 31.25%
 
 // 3427  2c 01 dc 05 08 07 b8 0b e4 0c fe ff ff ff
 //-------------------------------
