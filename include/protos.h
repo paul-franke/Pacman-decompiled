@@ -80,7 +80,7 @@ void incMainSub2_06a3(void);
 void creditStateReset_06a8(void);
 void playGameStateMachine_06be(void);
 void setGhostColour_0bd6(void);
-void setupGhostTimers_070e(int b);
+void setupCurrentLevelParameters_070e(int b);
 void setupMovePat_0814(uint8_t *hl);
 void initLeaveHouseCounters_083a(uint8_t *hl);
 void resetPlayerParams_0879(void);

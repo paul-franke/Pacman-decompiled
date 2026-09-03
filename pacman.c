@@ -66,11 +66,11 @@ void nothingParam_000c(uint16_t unused) {}
  *  empty function here specifically for sound effects. */
 void nothingSound_000c(SOUND_EFFECT *effect, uint8_t *frequency) {}
 
-void setupGhostTimers_000d(int param) {
+void setupLevelParameters_000d(int param) {
   //-------------------------------
   // 000d  c30e07    jp      #070e
   //-------------------------------
-  setupGhostTimers_070e(param);
+  setupCurrentLevelParameters_070e(param);
 }
 
 /*  Add b to hl, fetch return the byte at *(hl+b).  hl is also modified */
@@ -262,6 +262,9 @@ uint16_t getScreenOffset_0065(XYPOS pos) {
 // 0080  06 07 08 09 0a 0b 0c 0d  0e 0f 10 11 14
 //-------------------------------
 
+/*
+ * ISR/VBLANK
+ */
 void isr_008d(void) {
   //-------------------------------
   // 	;; Non-test mode interrupt routine
@@ -546,6 +549,10 @@ void isr_008d(void) {
   interruptEnable();
 }
 
+/*
+ * ISR/VBLANK
+ * Updates the game counters.
+ */
 void updateCounters_01dc(void) {
 
   //-------------------------------
@@ -676,7 +683,7 @@ void updateCounters_01dc(void) {
 //-------------------------------
 
 /*  
- * ISR TASK
+ * ISR VBLANK
  *  Dispatch tasks in the queue once their timer expires.  The time value is the
  *  lower 6 bits of the delay value.  The upper 2 bits are the units
  *  (tenths of a second, seconds, 10 seconds or 1 minute)  
@@ -745,15 +752,15 @@ void dispatchISRTasks_0221(void) {
           printf("%s disp tsk %d\n", __func__, task->func);
           ASSERT(task->func < 10);
           void (*func[])() = {incLevelStateSubr_0894,
-                              incMainSub2_06a3,
-                              incMainStateIntro_058e,
+                              incMainSub2_06a3, 
+                              incMainStateIntro_058e, // 3 ISRTASK_INC_MAIN_STATE_INTRO
                               incKilledState_1272, // 3 ISRTASK_INC_KILLED_STATE
                               resetFruit_1000,     // 4 ISRTASK_RESET_FRUIT
-                              eraseFruitPoints_100b,
-                              displayReady_0263,
-                              incScene1State_212b,
-                              incScene2State_21f0,
-                              incScene3State_22b9};
+                              eraseFruitPoints_100b, // 5 ISRTASK_ERASE_FRUIT_POINTS
+                              displayReady_0263, // 6 ISRTASK_DISPLAY_READY  
+                              incScene1State_212b, // Cut scene 1 state machine
+                              incScene2State_21f0, // Cut scene 2 state machine
+                              incScene3State_22b9}; // Cut scene 3 state machine
           tableCall_0020(func, task->func);
           /*  No return as this addr was pushed as ret addr */
         }
@@ -774,7 +781,7 @@ void dispatchISRTasks_0221(void) {
 }
 
 /*
- * ISR Task  
+ * ISR-Task  
  * Only queue a non ISR task to display the "READY" message if the game is not in demo mode. 
  */
 void displayReady_0263(void) {
@@ -787,7 +794,7 @@ void displayReady_0263(void) {
 }
 
 /*
- * ISR Task  
+ * ISR VBLANK  
  * Check/debounce coin inputs 
  */
 void checkCoinInput_0267(void) {
@@ -1643,7 +1650,11 @@ void introStartMoveBlinky_051c(void) {
 
 /*
  * ISR/VBLANK
- * This function is called every frame during the intro demo. It updates the ghosts' states, animates them, flashes powerups, and checks for any necessary reversals.
+ * A blocking wait trigger for the attract mode cutscene.
+ * It waits until the tracked character reaches a specific X/Y target tile.
+ * Until the target is reached, it continuously calls introMain_052c() to keep the animation running frame by frame.
+ * Once the character hits the target, it sets the specified ghost to SUBSTATE_CHASE (waking them up) 
+ * and advances the script.
  */
 void introAdvanceState_0524(uint8_t *ghostSubstate, int target, int tile) {
   //-------------------------------
@@ -1664,7 +1675,10 @@ void introAdvanceState_0524(uint8_t *ghostSubstate, int target, int tile) {
 
 /*
  * ISR/VBLANK
- * This function is called every frame during the intro demo. It updates the ghosts' states, animates them, flashes powerups, and checks for any necessary reversals.
+ * The "Animation Engine" for the cutscenes.
+ * Called continuously to advance the cutscene by one frame.
+ * Calls updateGhostStates_1017 twice to run movement at 200% speed ("Benny Hill" effect).
+ * Flashes powerups, animates ghost skirts, and checks reverse flags to trigger scripted U-turns.
  */
 void introMain_052c(void) {
   //-------------------------------
@@ -1694,7 +1708,7 @@ void introMain_052c(void) {
 
 /*
  * ISR/VBLANK
- * Set trigger for Pinky to appear on screen when Blinky has reached tile 0x24
+ * Set trigger for Pinky to appear on screen when Blinky has reached tile 0x20
 */
 void introStartMovePinky_054b(void) {
   //-------------------------------
@@ -1708,7 +1722,7 @@ void introStartMovePinky_054b(void) {
 
 /*
  * ISR/VBLANK
- * Set trigger for Inky to appear on screen when Blinky has reached tile 0x24
+ * Set trigger for Inky to appear on screen when Blinky has reached tile 0x22
 */
 void introStartMoveInky_0556(void) {
   //-------------------------------
@@ -1722,7 +1736,7 @@ void introStartMoveInky_0556(void) {
 
 /*
  * ISR/VBLANK
- * Set trigger for Clyde to appear on screen whem Blinky has reached tile 0x24
+ * Set trigger for Clyde to appear on screen when Blinky has reached tile 0x24
 */
 void introStartMoveClyde_0561(void) {
   //-------------------------------
@@ -1826,9 +1840,14 @@ void incMainStateIntro_058e(void) {
 
 /*
  * ISR/VBLANK
- * This function is used to display the ghosts' names and in the intro screen, advance to the next state.
- * Used for "CHARACTER", "BLINKY", "PINKY", "INKY"
-*/
+ * Introduces the ghosts on-screen one by one during the attract mode.
+ * Used for "CHARACTER", "BLINKY", "PINKY", "INKY".
+ * 
+ * It adds GHOST_NAMES_MODE (a physical DIP switch setting) to the base text ID 
+ * to instantly select the localized string (English vs Japanese names).
+ * Then, it schedules a 1.15s wait timer (0x45 frames) before waking the state machine
+ * up again to introduce the next ghost.
+ */
 void introduceGhost_0593(int c) {
   //-------------------------------
   // 0593  3a754e    ld      a,(#4e75)
@@ -1852,9 +1871,14 @@ void introduceGhost_0593(int c) {
 
 /*
  * ISR/VBLANK
- * This function is used to reverse Pac-Man's direction during the cutscenes and attract
- * Unlike normal gameplay (where the player's joystick input dictates when Pac-Man turns). 
-*/
+ * Reverses Pac-Man's direction during cutscenes (like when he eats the giant power pellet).
+ * Checks PACMAN_ORIENT_CHG_FLAG set by the cutscene script. If set, forces a 180-degree U-turn.
+ * 
+ * It uses a classic bitwise XOR trick (direction ^ 2) to perfectly flip orientations 
+ * (0=Right->2=Left, 1=Down->3=Up).
+ * The reversed vector is loaded into PACMAN_VECTOR2 (the "desired velocity" buffer), 
+ * guaranteeing he smoothly turns on the very next frame.
+ */
 XYPOS pacmanReverse_05a5(void) {
   //-------------------------------
   // 05a5  3ab54d    ld      a,(#4db5)
@@ -2271,7 +2295,12 @@ void playGameStateMachine_06be(void) {
   tableCall_0020(func, LEVEL_STATE);
 }
 
-void setupGhostTimers_070e(int b) {
+/*
+  *  This function sets up the ghost parameters for the current level.
+  *  It is called at the start of each level and when a new game is started.
+  *  It uses the current difficulty level to index the table at 0x0796.
+ */
+void setupCurrentLevelParameters_070e(int b) {
   //-------------------------------
   // 070e  78        ld      a,b
   // 070f  a7        and     a
@@ -2318,14 +2347,14 @@ void setupGhostTimers_070e(int b) {
   uint8_t a = ix[0] * 0x2a;
   uint8_t *hl = MOVE_DATA_330f + a;
   printf("%s movedata %d = %lx\n", __func__, a, hl - ROM);
-  setupMovePat_0814(hl);
+  setupMovePat_0814(hl);  // speed masks and scatter/chase times
 
   //-------------------------------
   // 073a  dd7e01    ld      a,(ix+#01)
   // 073d  32b04d    ld      (#4db0),a
   //-------------------------------
   REL_DIFF = ix[1];
-  printf("%s REL_DIFF=%d\n", __func__, REL_DIFF);
+  printf("%s REL_DIFF=%d\n", __func__, REL_DIFF); // not used by the game engine, but is used by the level editor to set the difficulty of the level
 
   //-------------------------------
   // 0740  dd7e02    ld      a,(ix+#02)
@@ -2340,7 +2369,7 @@ void setupGhostTimers_070e(int b) {
   //-------------------------------
   hl = DATA_0843 + 3 * ix[2];
   printf("%s leave home counter=%lx\n", __func__, hl - ROM);
-  initLeaveHouseCounters_083a(hl);
+  initLeaveHouseCounters_083a(hl); // Leave ghost den  timers
 
   //-------------------------------
   // 0750  dd7e03    ld      a,(ix+#03)
@@ -2358,8 +2387,8 @@ void setupGhostTimers_070e(int b) {
   // 0763  22bb4d    ld      (#4dbb),hl
   //-------------------------------
   printf("%s pills rem diff=%lx\n", __func__, iy - ROM);
-  PILLS_REM_DIFF_1 = iy[0];
-  PILLS_REM_DIFF_2 = iy[1];
+  PILLS_REM_DIFF_1 = iy[0];  // Cruising Elroy-1
+  PILLS_REM_DIFF_2 = iy[1];  // Cruising Elroy-2
 
   //-------------------------------
   // 0766  dd7e04    ld      a,(ix+#04)
@@ -2378,7 +2407,7 @@ void setupGhostTimers_070e(int b) {
   //-------------------------------
   printf("%s ghost edible time=[%lx]=%04x\n", __func__, iy - ROM,
          *(uint16_t *)iy);
-  GHOST_EDIBLE_TIME = *(uint16_t *)iy;
+  GHOST_EDIBLE_TIME = *(uint16_t *)iy; // Ghost edible time (time ghosts stay blue after eating a power pellet)
 
   //-------------------------------
   // 077c  dd7e05    ld      a,(ix+#05)
@@ -2407,7 +2436,18 @@ void setupGhostTimers_070e(int b) {
 }
 
 /* Table of values used to initialise ghost timers.  Groups of 6 bytes.  21
- * entries.  Index is difficulty of current level (0 thru 20) */
+ * entries.  Index is difficulty of current level (0 thru 20) 
+
+ At start of a level, the game calculates a pointer (ix) that points to the 6 configuration bytes for the current level in the ROM (at DATA_0796). 
+ These are all index numbers that point to other tables in the game1:
+
+Byte 0 (ix[0]): Speed & Scatter/Chase tijden. Bytes is use to select the Data block at 0x330f that contains the speed masks and scatter/chase times for the ghosts.  The data block is 42 bytes long and contains the speed masks and scatter/chase times for each ghost. 
+Byte 1 (ix[1]): Stored in REL_DIFF. It looks like the game engine ignores this values (To Check)
+Byte 2 (ix[2]): Leave home counter. Used to index into the table at address: 0x0843
+Byte 3 (ix[3]): "Cruise Elroy" number of dots. Index into table at 0x084f
+Byte 4 (ix[4]): Power Pellet time. Index into table at 0x0861. 
+Byte 5 (ix[5]): Global Ghost Timer. This is a safety mechanism in case Pac-Man hides: if he doesn't eat dots for a certain time, this limit forces the next ghost to leave the house. Index into table at 0x0873. 
+*/
 
 //-------------------------------
 // 0796  03 01 01 00 02 00
@@ -2433,6 +2473,12 @@ void setupGhostTimers_070e(int b) {
 // 080e  06 02 03 07 08 02
 //-------------------------------
 
+/*
+ * Loads the speed masks and Scatter and Chase times for the ghosts from the data block at 0x330f into the game variables.  The data block is 42 bytes long and contains the speed masks and scatter/chase times for each ghost.  The data block is indexed by the difficulty of the current level (0 thru 20).  
+ * The data block is copied into the game variables PACMAN_MOVE_PAT_NORMAL, PINKY_MOVE_PAT_NORMAL, INKY_MOVE_PAT_NORMAL, CLYDE_MOVE_PAT_NORMAL, and DIFFICULTY_TABLE.
+ * Note that these game variable are a pointer to a data structure that contains more game variables. So with these copying operations
+ * All speed masks and Scatter and Chase times for the ghosts are copied into the respective game variables.
+ */
 void setupMovePat_0814(uint8_t *hl) {
   //-------------------------------
   // 0814  11464d    ld      de,#4d46
@@ -2496,39 +2542,46 @@ void initLeaveHouseCounters_083a(uint8_t *hl) {
 
 /*  Leave home counter data, groups of 3 bytes for pinky, inky and clyde
  *  respectively  */
-
 //-------------------------------
-// 0843  14 1e 46
-// 0846  00 1e 3c
-// 0849  00 00 32
-// 084c  00 00 00
+//                  Pinky  Inky  Clyde
+// 0843  14 1e 46    20    30    70 
+// 0846  00 1e 3c    00    30    60
+// 0849  00 00 32    00    00    50
+// 084c  00 00 00    00    00    00
 //-------------------------------
 
 /*  Pills remaining before blinky goes cruise elroy (DIFF1 and DIFF2) */
-
 //-------------------------------
-// 084f  14 0a
-// 0851  1e 0f
-// 0853  28 14
-// 0855  32 19
-// 0857  3c 1e
-// 0859  50 28
-// 085b  64 32
-// 085d  78 3c
-// 085f  8c 46
+//                 DIFF1  DIFF2
+// 084f  14 0a     20     10
+// 0851  1e 0f     30     15
+// 0853  28 14     40     20
+// 0855  32 19     50     25
+// 0857  3c 1e     60     30
+// 0859  50 28     80     40
+// 085b  64 32    100     50
+// 085d  78 3c    120     60
+// 085f  8c 46    140     70
 //-------------------------------
 
 /*  Time that ghosts remain edible - 16 bit values */
-
 //-------------------------------
-// 0861     c0 03 48 03 d0 02 58  02 e0 01 68 01 f0 00 78
-// 0870  00 01 00
+// 0861     c0 03   = 0x03c0 = 960 frames = 16 seconds
+// 0863     48 03   = 0x0348 = 840 frames = 14 seconds
+// 0865     d0 02   = 0x02d0 = 720 frames = 12 seconds
+// 0867     58 02   = 0x0258 = 600 frames = 10 seconds
+// 0869     e0 01   = 0x01e0 = 480 frames = 8 seconds
+// 086b     68 01   = 0x0168 = 360 frames = 6 seconds
+// 086d     f0 00   = 0x00f0 = 240 frames = 4 seconds
+// 086f     78 00   = 0x0078 = 120 frames = 2 seconds
+// 0871     01 00   = 0x0001 =   1 frame  = 1/60 second
 //-------------------------------
 
 /*  Units for ghost leaving home timer.  16-bits */
-
 //-------------------------------
-// 0873  f0 00 f0 00 b4  00
+// 0873   f0 00 
+// 0874   f0 00 
+// 0875   b4 00
 //-------------------------------
 
 /*  side-effect: Sets HL to 0x4e04 */
@@ -4098,12 +4151,14 @@ void toggleGhostAnimation_0e23(void) {
 }
 
 /*
- * ISR (VBLANK)
- * This function is the master clock for the Scatter/Chase wave timer.
- * NONRANDOM_MOVEMENT: 0=Scatter, 1=Chase, 2=Scatter, 3=Chase, 4=Scatter, 5=Chase, 6=Scatter, 7=Chase.
- * NONRANDOM_MOVEMENT value is queried by the AI-logic to determine whether the ghosts are in Scatter or Chase mode.
- *  for example: see blinkyScatterOrChase_2730
-*/
+ * ISR
+ * Master clock for the Scatter/Chase wave timer.
+ * Ghosts alternate between Scatter (retreat to corners) and Chase (attack) modes.
+ * NONRANDOM_MOVEMENT tracks the current wave (Even = Scatter, Odd = Chase).
+ * 
+ * When the difficulty wave timer expires, it calls this function to advance the wave 
+ * and force a simultaneous 180-degree U-turn for all ghosts by setting their ORIENT_CHG_FLAGs.
+ */
 void ghostsChangeOrientation_0e36(void) {
   //-------------------------------
   // 0e36  3aa64d    ld      a,(#4da6)
@@ -7935,6 +7990,11 @@ jump_1c36:
          BLINKY_VECTOR.y, BLINKY_POS.x, BLINKY_POS.y);
 }
 
+/*
+ * Engine loop update function for Pinky's movement and speed shift-registers.
+ * If PINKY_SUBSTATE is not SUBSTATE_CHASE, this acts as a gatekeeper and completely skips her,
+ * effectively freezing her coordinates in place until the cutscene wakes her up.
+ */
 void pinkyUpdateMovePat_1c4b(void) {
   //-------------------------------
   // 1c4b  3aa14d    ld      a,(#4da1)
@@ -10017,7 +10077,7 @@ void mainTaskLoop_234b(void) {
         homeOrRandomPinky_2865,
         homeOrRandomInky_288f,
         homeOrRandomClyde_28b9,
-        setupGhostTimers_000d, // 0x10 TASK_SETUP_GHOST_TIMERS
+        setupLevelParameters_000d, // 0x10 TASK_SETUP_GHOST_TIMERS
         clearGhostState_26a2,  // 0x11
         clearPillArrays_24c9,  // 0x12
         clearPillsScreen_2a35,
@@ -10924,6 +10984,14 @@ void configureGame_26d0(int unused) {
 // 2728  10 15 20 ff 68 00 7d 00
 //-------------------------------
 
+/*
+ * AI logic for Blinky's pathfinding target.
+ * This determines whether Blinky should head towards his Scatter target (top right corner) 
+ * or his Chase target (Pac-Man's current tile).
+ * It uses the NONRANDOM_MOVEMENT timer to determine the wave.
+ * Even values (0, 2, 4, 6) = Scatter.
+ * Odd values (1, 3, 5, 7) = Chase.
+ */
 void blinkyScatterOrChase_2730(int param) {
   printf("%s BLINKY \n", __func__);
   //-------------------------------
@@ -14647,6 +14715,13 @@ void delay_32ed(void) {
  *  (normal, edible and tunnel) and blinky has an additional two
  *  (difficulty1 and difficulty2) */
 
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  0  *******************************/
+/**********************************************************/
+/**********************************************************/
+
 //-------------------------------
 // 330f  55 2a 55 2a // pacman normal - 14 of 32 = 44%
 //       55 55 55 55 // pacman powered - 16 of 32 = 50%
@@ -14658,13 +14733,29 @@ void delay_32ed(void) {
 //-------------------------------
 
 /*  Difficulty table - 0xe bytes */
-
+/* 
+ * The function setupMovePat_0814 copies these 14 bytes out of ROM and pastes them 
+ * into RAM at 0x4D86, which the C code labels as DIFFICULTY_TABLE.
+ *
+ * 58 02 -> 0x0258 = 600 frames (10 seconds) -> Scatter Wave 1
+ * 08 07 -> 0x0708 = 1800 frames (30 seconds) -> Chase Wave 1
+ * 60 09 -> 0x0960 = 2400 frames (40 seconds total time) -> Scatter Wave 2
+ * 10 0e -> 0x0E10 = 3600 frames (60 seconds total time) -> Chase Wave 2
+ * 68 10 -> 0x1068 = 4200 frames (70 seconds total time) -> Scatter Wave 3
+ * 70 17 -> 0x1770 = 6000 frames (100 seconds total time) -> Chase Wave 3
+ * 14 19 -> 0x1914 = 6420 frames (107 seconds total time) -> Scatter Wave 4
+*/
 //-------------------------------
 //       58 02 08 07 60
 // 3330  09 10 0e 68 10 70 17 14  19
 //-------------------------------
 
-/*  Next move pattern */
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  1  *******************************/
+/**********************************************************/
+/**********************************************************/
 
 //-------------------------------
 // 3339  52 4a a5 94 // pacman normal -  14 of 32 = 43.75%
@@ -14677,6 +14768,13 @@ void delay_32ed(void) {
 
 //       00 00 00 00 00 00 00 00 00 00 00 00 00 00
 
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  2  *******************************/
+/**********************************************************/
+/**********************************************************/
+
 //       55 2a 55 2a // pacman normal - 14 if 32 = 44%
 //       55 55 55 55 // pacman powered - 16 of 32 = 50%
 //       aa 2a 55 55 // blinky difficulty2 - 15 of 32 = 46.875%
@@ -14685,7 +14783,23 @@ void delay_32ed(void) {
 //       48 24 22 91 // ghost edible - 9 of 32 = 28.125%
 //       21 44 44 08 // ghost tunnel - 7 of 32 = 21.875%
 
+/* 
+ * 58 02 -> 0x0258 = 600 frames (10 seconds) -> Scatter Wave 1
+ * 34 08 -> 0x0834 = 2100 frames (35 seconds) -> Chase Wave 1
+ * d8 09 -> 0x09D8 = 2520 frames (42 seconds total time) -> Scatter Wave 2
+ * b4 0f -> 0x0FB4 = 4080 frames (68 seconds total time) -> Chase Wave 2
+ * 58 11 -> 0x1158 = 4440 frames (74 seconds total time) -> Scatter Wave 3
+ * 08 16 -> 0x1608 = 5640 frames (94 seconds total time) -> Chase Wave 3
+ * 34 17 -> 0x1734 = 6000 frames (100 seconds total time) -> Scatter Wave 4
+*/
 //       58 02 34 08 d8 09 b4 0f 58 11 08 16 34 17
+
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  3  *******************************/
+/**********************************************************/
+/**********************************************************/
 
 //       55 55 55 55 // pacman normal - 16 of 32 = 50%
 //       d5 6a d5 6a // pacman powered - 18 of 32 = 56%
@@ -14695,7 +14809,23 @@ void delay_32ed(void) {
 //       92 24 92 24 // ghost edible - 10 of 32 = 31.25%
 //       22 22 22 22 // ghost tunnel - 8 of 32 = 25%
 
+/* 
+ * a4 01 -> 0x01a4 = 420 frames (7 seconds) -> Scatter Wave 1
+ * 54 06 -> 0x0654 = 1620 frames (27 seconds) -> Chase Wave 1
+ * f8 07 -> 0x07f8 = 2040 frames (34 seconds total time) -> Scatter Wave 2
+ * a8 0c -> 0x0ca8 = 3240 frames (54 seconds total time) -> Chase Wave 2
+ * d4 0d -> 0x0dd4 = 3540 frames (59 seconds total time) -> Scatter Wave 3
+ * 84 12 -> 0x1284 = 4740 frames (79 seconds total time) -> Chase Wave 3
+ * b0 13 -> 0x1734 = 6000 frames (100 seconds total time) -> Scatter Wave 4
+*/
 // 33a9  a4 01 54 06 f8 07 a8 0c d4 0d 84 12 b0 13
+
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  4  *******************************/
+/**********************************************************/
+/**********************************************************/
 
 // 33b7  d5 6a d5 6a // pacman normal - 18 of 32 = 56%
 // 33bb  d6 5a ad b5 // pacman powered - 19 of 32 = 59.375%
@@ -14705,7 +14835,23 @@ void delay_32ed(void) {
 // 33cb  92 24 25 49 // ghost edible - 11 of 32 = 34.375%
 // 33cf  48 24 22 91 // ghost tunnel - 9 of 32 = 28.125%
 
+/* 
+ * a4 01 -> 0x01a4 = 420 frames (7 seconds) -> Scatter Wave 1
+ * 54 06 -> 0x0654 = 1620 frames (27 seconds) -> Chase Wave 1
+ * f8 07 -> 0x07f8 = 2040 frames (34 seconds total time) -> Scatter Wave 2
+ * a8 0c -> 0x0ca8 = 3240 frames (54 seconds total time) -> Chase Wave 2
+ * d4 0d -> 0x0dd4 = 3540 frames (59 seconds total time) -> Scatter Wave 3
+ * 84 12 -> 0x1284 = 4740 frames (79 seconds total time) -> Chase Wave 3
+ * b0 13 -> 0x1734 = 65535 frames (1092 seconds total time) -> Scatter Wave 4
+*/
 // 33d3  a4 01 54 06 f8 07 a8 0c d4 0d fe ff ff ff
+
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  5  *******************************/
+/**********************************************************/
+/**********************************************************/
 
 // 33e1  6d 6d 6d 6d // pacman normal - 20 of 32 = 62.5%
 // 33e5  6d 6d 6d 6d // pacman powered - 20 of 32 = 62.5%
@@ -14715,7 +14861,23 @@ void delay_32ed(void) {
 // 33f5  25 25 25_25 // ghost edible - 10 of 32 = 31.25%
 //  
 
+/* 
+ * 2c 01 -> 0x012c = 300 frames (5 seconds) -> Scatter Wave 1
+ * dc 05 -> 0x05dc = 1500 frames (25 seconds) -> Chase Wave 1
+ * 08 07 -> 0x0708 = 1800 frames (30 seconds total time) -> Scatter Wave 2
+ * b8 0b -> 0x0bB8 = 3000 frames (50 seconds total time) -> Chase Wave 2
+ * e4 0c -> 0x0cE4 = 3300 frames (35 seconds total time) -> Scatter Wave 3
+ * fe ff -> 0xfffe = 65534 frames (1092 seconds total time) -> Chase Wave 3
+ * ff ff -> 0xffff = 65535 frames (1092 seconds total time) -> Scatter Wave 4
+*/
 // 33fd  2c 01 dc 05 08 07 b8 0b e4 0c fe ff ff ff
+
+
+/**********************************************************/
+/**********************************************************/
+/***********  B L O C K  6  *******************************/
+/**********************************************************/
+/**********************************************************/
 
 // 340b  d5 6a d5 6a // pacman normal - 18 of 32 = 56%
 // 340f  d5 6a d5 6a // pacman powered - 18 of 32 = 56%
@@ -14725,6 +14887,15 @@ void delay_32ed(void) {
 // 341f  48 24 22 91 // ghost edible - 9 of 32 = 28.125%
 // 3423  92 24 92 24 // ghost tunnel - 10 of 32 = 31.25%
 
+/* 
+ * 2c 01 -> 0x012c = 300 frames (5 seconds) -> Scatter Wave 1
+ * dc 05 -> 0x05dc = 1500 frames (25 seconds) -> Chase Wave 1
+ * 08 07 -> 0x0708 = 1800 frames (30 seconds total time) -> Scatter Wave 2
+ * b8 0b -> 0x0bB8 = 3000 frames (50 seconds total time) -> Chase Wave 2
+ * e4 0c -> 0x0cE4 = 3300 frames (35 seconds total time) -> Scatter Wave 3
+ * fe ff -> 0xfffe = 65534 frames (1092 seconds total time) -> Chase Wave 3
+ * ff ff -> 0xffff = 65535 frames (1092 seconds total time) -> Scatter Wave 4
+*/
 // 3427  2c 01 dc 05 08 07 b8 0b e4 0c fe ff ff ff
 //-------------------------------
 
