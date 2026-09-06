@@ -39,6 +39,7 @@ void videoDrawSprite (unsigned px, unsigned py, int shape, int mode, int colour)
 void videoDrawChar (unsigned cx, unsigned cy, int chr, int chrCol);
 void videoPlot (unsigned x, unsigned y, pixel p);
 pixel videoColourLookup (uint8_t col);
+void videoStartGlutLoop(void);
 
 #endif
 

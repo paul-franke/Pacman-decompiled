@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#define NUMBER_OF_BYTES_IN_ROW 0x20
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +32,14 @@
 #include "memmap.h"
 #include "protos.h"
 #include "structs.h"
+
+/* Forward declarations for difficulty and move data tables */
+extern const uint8_t LEVEL_DIFFICULTY_PARAMS[21][6];
+extern const uint8_t LEAVE_HOME_COUNTERS[4][3];
+extern const uint8_t CRUISE_ELROY_THRESHOLDS[9][2];
+extern const uint16_t GHOST_EDIBLE_TIMES[9];
+extern const uint16_t GLOBAL_LEAVE_HOME_TIMERS[3];
+extern const uint8_t MOVE_DATA_BLOCKS[7][42];
 
 void reset_0000(void) {
   //-------------------------------
@@ -253,14 +262,29 @@ uint16_t getScreenOffset_0065(XYPOS pos) {
 /*  Difficulty data.  Two sets, easy or hard.  Hard ramps up more quickly.
  *  Each level is more difficult until max difficulty which is 0x14 */
 
-//-------------------------------
-// 0068                           00 01 02 03 04 05 06 07
-// 0070  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14
-//-------------------------------
-//-------------------------------
-// 007d                                          01 03 04
-// 0080  06 07 08 09 0a 0b 0c 0d  0e 0f 10 11 14
-//-------------------------------
+const uint8_t DIFFICULTY_CURVE_EASY[] = {
+    /* 0068 */ 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    /* 0070 */ 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14
+};
+
+const uint8_t DIFFICULTY_CURVE_HARD[] = {
+    /* 007d */ 0x01, 0x03, 0x04,
+    /* 0080 */ 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x14
+};
+
+const uint8_t * const DIFFICULTY_CURVES[2] = {
+    DIFFICULTY_CURVE_EASY,
+    DIFFICULTY_CURVE_HARD
+};
+
+uint8_t getDifficultyCurveValue(uint16_t ptr) {
+    if (ptr >= 0x0068 && ptr < 0x0068 + sizeof(DIFFICULTY_CURVE_EASY)) {
+        return DIFFICULTY_CURVES[0][ptr - 0x0068];
+    } else if (ptr >= 0x007d && ptr < 0x007d + sizeof(DIFFICULTY_CURVE_HARD)) {
+        return DIFFICULTY_CURVES[1][ptr - 0x007d];
+    }
+    return 0x14; /* Fallback max difficulty */
+}
 
 /*
  * ISR/VBLANK
@@ -1627,7 +1651,7 @@ void demoMazeHorizontal_0506(void) {
     //-------------------------------
     SCREEN[ix + 0x11] = 0xfc;
     SCREEN[ix + 0x13] = 0xfc;
-    ix += 0x20;
+    ix += NUMBER_OF_BYTES_IN_ROW;
   }
   //-------------------------------
   // 051b  c9        ret
@@ -2294,7 +2318,6 @@ void playGameStateMachine_06be(void) {
                       advanceToLevelStatePlayGame_0aa3};
   tableCall_0020(func, LEVEL_STATE);
 }
-
 /*
   *  This function sets up the ghost parameters for the current level.
   *  It is called at the start of each level and when a new game is started.
@@ -2309,7 +2332,7 @@ void setupCurrentLevelParameters_070e(int b) {
   // 0715  7e        ld      a,(hl)
   //-------------------------------
   if (b == 0) {
-    b = ROM[P1_CURR_DIFFICULTY];
+    b = getDifficultyCurveValue(P1_CURR_DIFFICULTY);
     printf("%s ROM read diff = %d\n", __func__, b);
   }
 
@@ -2324,8 +2347,8 @@ void setupCurrentLevelParameters_070e(int b) {
   // 0720  1600      ld      d,#00
   // 0722  dd19      add     ix,de
   //-------------------------------
-  uint8_t *ix = DATA_0796 + b * 6;
-  printf("%s data = %lx\n", __func__, ix - ROM);
+  const uint8_t *ix = LEVEL_DIFFICULTY_PARAMS[b];
+  printf("%s data from LEVEL_DIFFICULTY_PARAMS (level index %d)\n", __func__, b);
 
   //-------------------------------
   // 0724  dd7e00    ld      a,(ix+#00)
@@ -2344,9 +2367,8 @@ void setupCurrentLevelParameters_070e(int b) {
   // 0736  19        add     hl,de
   // 0737  cd1408    call    #0814
   //-------------------------------
-  uint8_t a = ix[0] * 0x2a;
-  uint8_t *hl = MOVE_DATA_330f + a;
-  printf("%s movedata %d = %lx\n", __func__, a, hl - ROM);
+  const uint8_t *hl = MOVE_DATA_BLOCKS[ix[0]];
+  printf("%s movedata block index = %d\n", __func__, ix[0]);
   setupMovePat_0814(hl);  // speed masks and scatter/chase times
 
   //-------------------------------
@@ -2367,8 +2389,8 @@ void setupCurrentLevelParameters_070e(int b) {
   // 074c  19        add     hl,de
   // 074d  cd3a08    call    #083a
   //-------------------------------
-  hl = DATA_0843 + 3 * ix[2];
-  printf("%s leave home counter=%lx\n", __func__, hl - ROM);
+  hl = LEAVE_HOME_COUNTERS[ix[2]];
+  printf("%s leave home counter index=%d\n", __func__, ix[2]);
   initLeaveHouseCounters_083a(hl); // Leave ghost den  timers
 
   //-------------------------------
@@ -2379,14 +2401,14 @@ void setupCurrentLevelParameters_070e(int b) {
   // 0757  fd214f08  ld      iy,#084f
   // 075b  fd19      add     iy,de
   //-------------------------------
-  uint8_t *iy = DATA_084f + 2 * ix[3];
+  const uint8_t *iy = CRUISE_ELROY_THRESHOLDS[ix[3]];
 
   //-------------------------------
   // 075d  fd6e00    ld      l,(iy+#00)
   // 0760  fd6601    ld      h,(iy+#01)
   // 0763  22bb4d    ld      (#4dbb),hl
   //-------------------------------
-  printf("%s pills rem diff=%lx\n", __func__, iy - ROM);
+  printf("%s pills rem diff index=%d\n", __func__, ix[3]);
   PILLS_REM_DIFF_1 = iy[0];  // Cruising Elroy-1
   PILLS_REM_DIFF_2 = iy[1];  // Cruising Elroy-2
 
@@ -2398,16 +2420,15 @@ void setupCurrentLevelParameters_070e(int b) {
   // 076d  fd216108  ld      iy,#0861
   // 0771  fd19      add     iy,de
   //-------------------------------
-  iy = DATA_0861 + 2 * ix[4];
-
+  // Note: Using the GHOST_EDIBLE_TIMES C array directly
+  
   //-------------------------------
   // 0773  fd6e00    ld      l,(iy+#00)
   // 0776  fd6601    ld      h,(iy+#01)
   // 0779  22bd4d    ld      (#4dbd),hl
   //-------------------------------
-  printf("%s ghost edible time=[%lx]=%04x\n", __func__, iy - ROM,
-         *(uint16_t *)iy);
-  GHOST_EDIBLE_TIME = *(uint16_t *)iy; // Ghost edible time (time ghosts stay blue after eating a power pellet)
+  GHOST_EDIBLE_TIME = GHOST_EDIBLE_TIMES[ix[4]]; // Ghost edible time (time ghosts stay blue after eating a power pellet)
+  printf("%s ghost edible time (index %d)=%04x\n", __func__, ix[4], GHOST_EDIBLE_TIME);
 
   //-------------------------------
   // 077c  dd7e05    ld      a,(ix+#05)
@@ -2417,16 +2438,15 @@ void setupCurrentLevelParameters_070e(int b) {
   // 0783  fd217308  ld      iy,#0873
   // 0787  fd19      add     iy,de
   //-------------------------------
-  iy = DATA_0873 + 2 * ix[5];
-  printf("%s leave home units data=%04lx\n", __func__, iy - ROM);
-
+  // Note: Using the GLOBAL_LEAVE_HOME_TIMERS C array directly
+  
   //-------------------------------
   // 0789  fd6e00    ld      l,(iy+#00)
   // 078c  fd6601    ld      h,(iy+#01)
   // 078f  22954d    ld      (#4d95),hl
   //-------------------------------
-  printf("%s leave home units=%04x\n", __func__, *(uint16_t *)iy);
-  UNITS_B4_GHOST_LEAVES_HOME = *(uint16_t *)iy;
+  UNITS_B4_GHOST_LEAVES_HOME = GLOBAL_LEAVE_HOME_TIMERS[ix[5]];
+  printf("%s leave home units (index %d)=%04x\n", __func__, ix[5], UNITS_B4_GHOST_LEAVES_HOME);
 
   //-------------------------------
   // 0792  cdea2b    call    #2bea
@@ -2449,29 +2469,29 @@ Byte 4 (ix[4]): Power Pellet time. Index into table at 0x0861.
 Byte 5 (ix[5]): Global Ghost Timer. This is a safety mechanism in case Pac-Man hides: if he doesn't eat dots for a certain time, this limit forces the next ghost to leave the house. Index into table at 0x0873. 
 */
 
-//-------------------------------
-// 0796  03 01 01 00 02 00
-// 079c  04 01 02 01 03 00
-// 07a2  04 01 03 02 04 01
-// 07a8  04 02 03 02 05 01
-// 07ae  05 00 03 02 06 02
-// 07b4  05 01 03 03 03 02
-// 07ba  05 02 03 03 06 02
-// 07c0  05 02 03 03 06 02
-// 07c6  05 00 03 04 07 02
-// 07cc  05 01 03 04 03 02
-// 07d2  05 02 03 04 06 02
-// 07d8  05 02 03 05 07 02
-// 07de  05 00 03 05 07 02
-// 07e4  05 02 03 05 05 02
-// 07ea  05 01 03 06 07 02
-// 07f0  05 02 03 06 07 02
-// 07f6  05 02 03 06 08 02
-// 07fc  05 02 03 06 07 02
-// 0802  05 02 03 07 08 02
-// 0808  05 02 03 07 08 02
-// 080e  06 02 03 07 08 02
-//-------------------------------
+const uint8_t LEVEL_DIFFICULTY_PARAMS[21][6] = {
+    /* 0796 */ {0x03, 0x01, 0x01, 0x00, 0x02, 0x00}, // Level 1
+    /* 079c */ {0x04, 0x01, 0x02, 0x01, 0x03, 0x00}, // Level 2
+    /* 07a2 */ {0x04, 0x01, 0x03, 0x02, 0x04, 0x01}, // Level 3
+    /* 07a8 */ {0x04, 0x02, 0x03, 0x02, 0x05, 0x01}, // Level 4
+    /* 07ae */ {0x05, 0x00, 0x03, 0x02, 0x06, 0x02}, // Level 5
+    /* 07b4 */ {0x05, 0x01, 0x03, 0x03, 0x03, 0x02}, // Level 6
+    /* 07ba */ {0x05, 0x02, 0x03, 0x03, 0x06, 0x02}, // Level 7
+    /* 07c0 */ {0x05, 0x02, 0x03, 0x03, 0x06, 0x02}, // Level 8
+    /* 07c6 */ {0x05, 0x00, 0x03, 0x04, 0x07, 0x02}, // Level 9
+    /* 07cc */ {0x05, 0x01, 0x03, 0x04, 0x03, 0x02}, // Level 10
+    /* 07d2 */ {0x05, 0x02, 0x03, 0x04, 0x06, 0x02}, // Level 11
+    /* 07d8 */ {0x05, 0x02, 0x03, 0x05, 0x07, 0x02}, // Level 12
+    /* 07de */ {0x05, 0x00, 0x03, 0x05, 0x07, 0x02}, // Level 13
+    /* 07e4 */ {0x05, 0x02, 0x03, 0x05, 0x05, 0x02}, // Level 14
+    /* 07ea */ {0x05, 0x01, 0x03, 0x06, 0x07, 0x02}, // Level 15
+    /* 07f0 */ {0x05, 0x02, 0x03, 0x06, 0x07, 0x02}, // Level 16
+    /* 07f6 */ {0x05, 0x02, 0x03, 0x06, 0x08, 0x02}, // Level 17
+    /* 07fc */ {0x05, 0x02, 0x03, 0x06, 0x07, 0x02}, // Level 18
+    /* 0802 */ {0x05, 0x02, 0x03, 0x07, 0x08, 0x02}, // Level 19
+    /* 0808 */ {0x05, 0x02, 0x03, 0x07, 0x08, 0x02}, // Level 20
+    /* 080e */ {0x06, 0x02, 0x03, 0x07, 0x08, 0x02}, // Level 21
+};
 
 /*
  * Loads the speed masks and Scatter and Chase times for the ghosts from the data block at 0x330f into the game variables.  The data block is 42 bytes long and contains the speed masks and scatter/chase times for each ghost.  The data block is indexed by the difficulty of the current level (0 thru 20).  
@@ -2479,7 +2499,7 @@ Byte 5 (ix[5]): Global Ghost Timer. This is a safety mechanism in case Pac-Man h
  * Note that these game variable are a pointer to a data structure that contains more game variables. So with these copying operations
  * All speed masks and Scatter and Chase times for the ghosts are copied into the respective game variables.
  */
-void setupMovePat_0814(uint8_t *hl) {
+void setupMovePat_0814(const uint8_t *hl) {
   //-------------------------------
   // 0814  11464d    ld      de,#4d46
   // 0817  011c00    ld      bc,#001c
@@ -2530,7 +2550,7 @@ void setupMovePat_0814(uint8_t *hl) {
 }
 
 /*  Sets the leave home counters for pinky, inky and clyde */
-void initLeaveHouseCounters_083a(uint8_t *hl) {
+void initLeaveHouseCounters_083a(const uint8_t *hl) {
   //-------------------------------
   // 083a  11b84d    ld      de,#4db8
   // 083d  010300    ld      bc,#0003
@@ -2540,49 +2560,46 @@ void initLeaveHouseCounters_083a(uint8_t *hl) {
   memcpy(&PINKY_LEAVE_HOME_COUNTER, hl, 3);
 }
 
-/*  Leave home counter data, groups of 3 bytes for pinky, inky and clyde
- *  respectively  */
-//-------------------------------
-//                  Pinky  Inky  Clyde
-// 0843  14 1e 46    20    30    70 
-// 0846  00 1e 3c    00    30    60
-// 0849  00 00 32    00    00    50
-// 084c  00 00 00    00    00    00
-//-------------------------------
+/*  Leave home counter data, groups of 3 bytes for pinky, inky and clyde respectively  */
+const uint8_t LEAVE_HOME_COUNTERS[4][3] = {
+    /* 0843 */ {0x14, 0x1e, 0x46}, // Pinky, Inky, Clyde (20, 30, 70)
+    /* 0846 */ {0x00, 0x1e, 0x3c}, // (0, 30, 60)
+    /* 0849 */ {0x00, 0x00, 0x32}, // (0, 0, 50)
+    /* 084c */ {0x00, 0x00, 0x00}, // (0, 0, 0)
+};
 
 /*  Pills remaining before blinky goes cruise elroy (DIFF1 and DIFF2) */
-//-------------------------------
-//                 DIFF1  DIFF2
-// 084f  14 0a     20     10
-// 0851  1e 0f     30     15
-// 0853  28 14     40     20
-// 0855  32 19     50     25
-// 0857  3c 1e     60     30
-// 0859  50 28     80     40
-// 085b  64 32    100     50
-// 085d  78 3c    120     60
-// 085f  8c 46    140     70
-//-------------------------------
+const uint8_t CRUISE_ELROY_THRESHOLDS[9][2] = {
+    /* 084f */ {0x14, 0x0a}, // DIFF1 (20), DIFF2 (10)
+    /* 0851 */ {0x1e, 0x0f}, // (30, 15)
+    /* 0853 */ {0x28, 0x14}, // (40, 20)
+    /* 0855 */ {0x32, 0x19}, // (50, 25)
+    /* 0857 */ {0x3c, 0x1e}, // (60, 30)
+    /* 0859 */ {0x50, 0x28}, // (80, 40)
+    /* 085b */ {0x64, 0x32}, // (100, 50)
+    /* 085d */ {0x78, 0x3c}, // (120, 60)
+    /* 085f */ {0x8c, 0x46}, // (140, 70)
+};
 
 /*  Time that ghosts remain edible - 16 bit values */
-//-------------------------------
-// 0861     c0 03   = 0x03c0 = 960 frames = 16 seconds
-// 0863     48 03   = 0x0348 = 840 frames = 14 seconds
-// 0865     d0 02   = 0x02d0 = 720 frames = 12 seconds
-// 0867     58 02   = 0x0258 = 600 frames = 10 seconds
-// 0869     e0 01   = 0x01e0 = 480 frames = 8 seconds
-// 086b     68 01   = 0x0168 = 360 frames = 6 seconds
-// 086d     f0 00   = 0x00f0 = 240 frames = 4 seconds
-// 086f     78 00   = 0x0078 = 120 frames = 2 seconds
-// 0871     01 00   = 0x0001 =   1 frame  = 1/60 second
-//-------------------------------
+const uint16_t GHOST_EDIBLE_TIMES[9] = {
+    /* 0861 */ 0x03c0, // 960 frames = 16 seconds
+    /* 0863 */ 0x0348, // 840 frames = 14 seconds
+    /* 0865 */ 0x02d0, // 720 frames = 12 seconds
+    /* 0867 */ 0x0258, // 600 frames = 10 seconds
+    /* 0869 */ 0x01e0, // 480 frames = 8 seconds
+    /* 086b */ 0x0168, // 360 frames = 6 seconds
+    /* 086d */ 0x00f0, // 240 frames = 4 seconds
+    /* 086f */ 0x0078, // 120 frames = 2 seconds
+    /* 0871 */ 0x0001, // 1 frame = 1/60 second
+};
 
-/*  Units for ghost leaving home timer.  16-bits */
-//-------------------------------
-// 0873   f0 00 
-// 0874   f0 00 
-// 0875   b4 00
-//-------------------------------
+/*  Units for global ghost leaving home timer - 16-bits */
+const uint16_t GLOBAL_LEAVE_HOME_TIMERS[3] = {
+    /* 0873 */ 0x00f0, // 240 frames
+    /* 0875 */ 0x00f0, // 240 frames
+    /* 0877 */ 0x00b4, // 180 frames
+};
 
 /*  side-effect: Sets HL to 0x4e04 */
 void resetPlayerParams_0879(void) {
@@ -3207,7 +3224,7 @@ void nextLevel_0a7c(void) {
   // 0a98  fe14      cp      #14
   // 0a9a  c8        ret     z
   //-------------------------------
-  if (ROM[P1_CURR_DIFFICULTY] == 0x14)
+  if (getDifficultyCurveValue(P1_CURR_DIFFICULTY) == 0x14)
     return;
 
   //-------------------------------
@@ -9545,8 +9562,8 @@ void scene2State5_221e(uint16_t iy) {
   //-------------------------------
   MEM[iy] = 0x64;
   MEM[iy + 1] = 0x65;
-  MEM[iy + 0x20] = 0x66;
-  MEM[iy + 0x21] = 0x67;
+  MEM[iy + NUMBER_OF_BYTES_IN_ROW] = 0x66;
+  MEM[iy + NUMBER_OF_BYTES_IN_ROW + 1] = 0x67;
 
   //-------------------------------
   // 2235  18b9      jr      #21f0           ; (-71)
@@ -9629,8 +9646,8 @@ void scene2State9_226a(uint16_t iy) {
   //-------------------------------
   MEM[iy] = 0x6c;
   MEM[iy + 1] = 0x6d;
-  MEM[iy + 0x20] = 0x40;
-  MEM[iy + 0x21] = 0x40;
+  MEM[iy + NUMBER_OF_BYTES_IN_ROW] = 0x40;
+  MEM[iy + NUMBER_OF_BYTES_IN_ROW + 1] = 0x40;
 
   //-------------------------------
   // 227f  f7        rst     #30
@@ -12302,8 +12319,8 @@ void drawFruit_2b8f(uint8_t *hl, int a) {
   printf("%s hl = [%lx]=%02x\n", __func__, hl - SCREEN, a);
   hl[0] = a++;
   hl[1] = a++;
-  hl[0x20] = a++;
-  hl[0x21] = a;
+  hl[NUMBER_OF_BYTES_IN_ROW] = a++;
+  hl[NUMBER_OF_BYTES_IN_ROW + 1] = a;
 }
 
 void displayCredits_2ba1() {
@@ -12402,7 +12419,7 @@ void fillScreenArea_2bcd(int addr, int ch, int cols, int rows) {
     // 2be6  3d        dec     a
     // 2be7  20f4      jr      nz,#2bdd        ; (-12)
     //-------------------------------
-    addr += 0x20;
+    addr += NUMBER_OF_BYTES_IN_ROW;
   }
 
   //-------------------------------
@@ -12445,7 +12462,7 @@ void displayFruitHistory_2bfd(uint8_t *table, int level) {
   //-------------------------------
   int c = 7;
   uint16_t hl = 0x4; // offset into video
-  for (int i = 0; i < level; i++) {
+  for (int i = 0; i <= level; i++) {
     //-------------------------------
     // 2c02  1a        ld      a,(de)		;
     // 2c03  cd8f2b    call    #2b8f		; Draw fruit
@@ -14715,189 +14732,135 @@ void delay_32ed(void) {
  *  (normal, edible and tunnel) and blinky has an additional two
  *  (difficulty1 and difficulty2) */
 
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  0  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-//-------------------------------
-// 330f  55 2a 55 2a // pacman normal - 14 of 32 = 44%
-//       55 55 55 55 // pacman powered - 16 of 32 = 50%
-//       55 2a 55 2a // blinky difficulty2 - 14 if 32 = 44%
-//       52 4a a5 94 // blinky difficulty1 - 13 of 32 = 41%
-//       25 25 25 25 // ghost normal - 12 of 32 = 37.5%
-//       22 22 22 22 // ghost edible - 8 of 32 = 25%
-//       01 01 01 01 // ghost tunnel - 4 of 32 = 12.5%
-//-------------------------------
-
-/*  Difficulty table - 0xe bytes */
-/* 
- * The function setupMovePat_0814 copies these 14 bytes out of ROM and pastes them 
- * into RAM at 0x4D86, which the C code labels as DIFFICULTY_TABLE.
- *
- * 58 02 -> 0x0258 = 600 frames (10 seconds) -> Scatter Wave 1
- * 08 07 -> 0x0708 = 1800 frames (30 seconds) -> Chase Wave 1
- * 60 09 -> 0x0960 = 2400 frames (40 seconds total time) -> Scatter Wave 2
- * 10 0e -> 0x0E10 = 3600 frames (60 seconds total time) -> Chase Wave 2
- * 68 10 -> 0x1068 = 4200 frames (70 seconds total time) -> Scatter Wave 3
- * 70 17 -> 0x1770 = 6000 frames (100 seconds total time) -> Chase Wave 3
- * 14 19 -> 0x1914 = 6420 frames (107 seconds total time) -> Scatter Wave 4
-*/
-//-------------------------------
-//       58 02 08 07 60
-// 3330  09 10 0e 68 10 70 17 14  19
-//-------------------------------
-
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  1  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-//-------------------------------
-// 3339  52 4a a5 94 // pacman normal -  14 of 32 = 43.75%
-//       aa 2a 55 55 // pacman powered - 15 of 32 = 46.875%
-//       55 2a 55 2a // blinky difficulty2 - 14 if 32 = 44%
-//       52 4a a5 94 // blinky difficulty1 - 13 of 32 = 41%
-//       92 24 25 49 // ghost normal - 11 of 32 = 34.375%
-//       48 24 22 91 // ghost edible - 9 of 32 = 28.125%
-//       01 01 01 01 // ghost tunnel - 4 of 32 = 12.5%
-
-//       00 00 00 00 00 00 00 00 00 00 00 00 00 00
-
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  2  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-//       55 2a 55 2a // pacman normal - 14 if 32 = 44%
-//       55 55 55 55 // pacman powered - 16 of 32 = 50%
-//       aa 2a 55 55 // blinky difficulty2 - 15 of 32 = 46.875%
-//       55 2a 55 2a // blinky difficulty1 - 14 if 32 = 44%
-//       52 4a a5 94 // ghost normal - 13 of 32 = 41%
-//       48 24 22 91 // ghost edible - 9 of 32 = 28.125%
-//       21 44 44 08 // ghost tunnel - 7 of 32 = 21.875%
-
-/* 
- * 58 02 -> 0x0258 = 600 frames (10 seconds) -> Scatter Wave 1
- * 34 08 -> 0x0834 = 2100 frames (35 seconds) -> Chase Wave 1
- * d8 09 -> 0x09D8 = 2520 frames (42 seconds total time) -> Scatter Wave 2
- * b4 0f -> 0x0FB4 = 4080 frames (68 seconds total time) -> Chase Wave 2
- * 58 11 -> 0x1158 = 4440 frames (74 seconds total time) -> Scatter Wave 3
- * 08 16 -> 0x1608 = 5640 frames (94 seconds total time) -> Chase Wave 3
- * 34 17 -> 0x1734 = 6000 frames (100 seconds total time) -> Scatter Wave 4
-*/
-//       58 02 34 08 d8 09 b4 0f 58 11 08 16 34 17
-
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  3  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-//       55 55 55 55 // pacman normal - 16 of 32 = 50%
-//       d5 6a d5 6a // pacman powered - 18 of 32 = 56%
-//       aa 6a 55 d5 // blinky difficulty2 - 17 of 32 = 53%
-//       55 55 55 55 // blinky difficulty1 - 16 of 32 = 50%
-//       aa 2a 55 55 // ghost normal - 15 of 32 = 46.875%
-//       92 24 92 24 // ghost edible - 10 of 32 = 31.25%
-//       22 22 22 22 // ghost tunnel - 8 of 32 = 25%
-
-/* 
- * a4 01 -> 0x01a4 = 420 frames (7 seconds) -> Scatter Wave 1
- * 54 06 -> 0x0654 = 1620 frames (27 seconds) -> Chase Wave 1
- * f8 07 -> 0x07f8 = 2040 frames (34 seconds total time) -> Scatter Wave 2
- * a8 0c -> 0x0ca8 = 3240 frames (54 seconds total time) -> Chase Wave 2
- * d4 0d -> 0x0dd4 = 3540 frames (59 seconds total time) -> Scatter Wave 3
- * 84 12 -> 0x1284 = 4740 frames (79 seconds total time) -> Chase Wave 3
- * b0 13 -> 0x1734 = 6000 frames (100 seconds total time) -> Scatter Wave 4
-*/
-// 33a9  a4 01 54 06 f8 07 a8 0c d4 0d 84 12 b0 13
-
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  4  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-// 33b7  d5 6a d5 6a // pacman normal - 18 of 32 = 56%
-// 33bb  d6 5a ad b5 // pacman powered - 19 of 32 = 59.375%
-// 33bf  d6 5a ad b5 // blinky difficulty2 - 17 of 32 = 53%
-// 33c3  d5 6a d5 6a // blinky difficulty1 - 16 of 32 = 50%
-// 33c7  aa 6a 55 d5 // ghost normal - 15 of 32 = 46.875%
-// 33cb  92 24 25 49 // ghost edible - 11 of 32 = 34.375%
-// 33cf  48 24 22 91 // ghost tunnel - 9 of 32 = 28.125%
-
-/* 
- * a4 01 -> 0x01a4 = 420 frames (7 seconds) -> Scatter Wave 1
- * 54 06 -> 0x0654 = 1620 frames (27 seconds) -> Chase Wave 1
- * f8 07 -> 0x07f8 = 2040 frames (34 seconds total time) -> Scatter Wave 2
- * a8 0c -> 0x0ca8 = 3240 frames (54 seconds total time) -> Chase Wave 2
- * d4 0d -> 0x0dd4 = 3540 frames (59 seconds total time) -> Scatter Wave 3
- * 84 12 -> 0x1284 = 4740 frames (79 seconds total time) -> Chase Wave 3
- * b0 13 -> 0x1734 = 65535 frames (1092 seconds total time) -> Scatter Wave 4
-*/
-// 33d3  a4 01 54 06 f8 07 a8 0c d4 0d fe ff ff ff
-
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  5  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-// 33e1  6d 6d 6d 6d // pacman normal - 20 of 32 = 62.5%
-// 33e5  6d 6d 6d 6d // pacman powered - 20 of 32 = 62.5%
-// 33e9  b6 6d 6d db // blinky difficulty2 - 21 of 32 = 65.625%
-// 33ed  6d 6d 6d 6d // blinky difficulty1 - 20 of 32 = 62.5%
-// 33f1  d6 5a ad b5 // ghost normal - 19 of 32 = 59.375%
-// 33f5  25 25 25_25 // ghost edible - 10 of 32 = 31.25%
-//  
-
-/* 
- * 2c 01 -> 0x012c = 300 frames (5 seconds) -> Scatter Wave 1
- * dc 05 -> 0x05dc = 1500 frames (25 seconds) -> Chase Wave 1
- * 08 07 -> 0x0708 = 1800 frames (30 seconds total time) -> Scatter Wave 2
- * b8 0b -> 0x0bB8 = 3000 frames (50 seconds total time) -> Chase Wave 2
- * e4 0c -> 0x0cE4 = 3300 frames (35 seconds total time) -> Scatter Wave 3
- * fe ff -> 0xfffe = 65534 frames (1092 seconds total time) -> Chase Wave 3
- * ff ff -> 0xffff = 65535 frames (1092 seconds total time) -> Scatter Wave 4
-*/
-// 33fd  2c 01 dc 05 08 07 b8 0b e4 0c fe ff ff ff
-
-
-/**********************************************************/
-/**********************************************************/
-/***********  B L O C K  6  *******************************/
-/**********************************************************/
-/**********************************************************/
-
-// 340b  d5 6a d5 6a // pacman normal - 18 of 32 = 56%
-// 340f  d5 6a d5 6a // pacman powered - 18 of 32 = 56%
-// 3413  b6 6d 6d db // blinky difficulty2 - 21 of 32 = 65.625%
-// 3417  6d 6d 6d 6d // blinky difficulty1 - 20 of 32 = 62.5%
-// 341b  d6 5a ad b5 // ghost normal - 19 of 32 = 59.375%
-// 341f  48 24 22 91 // ghost edible - 9 of 32 = 28.125%
-// 3423  92 24 92 24 // ghost tunnel - 10 of 32 = 31.25%
-
-/* 
- * 2c 01 -> 0x012c = 300 frames (5 seconds) -> Scatter Wave 1
- * dc 05 -> 0x05dc = 1500 frames (25 seconds) -> Chase Wave 1
- * 08 07 -> 0x0708 = 1800 frames (30 seconds total time) -> Scatter Wave 2
- * b8 0b -> 0x0bB8 = 3000 frames (50 seconds total time) -> Chase Wave 2
- * e4 0c -> 0x0cE4 = 3300 frames (35 seconds total time) -> Scatter Wave 3
- * fe ff -> 0xfffe = 65534 frames (1092 seconds total time) -> Chase Wave 3
- * ff ff -> 0xffff = 65535 frames (1092 seconds total time) -> Scatter Wave 4
-*/
-// 3427  2c 01 dc 05 08 07 b8 0b e4 0c fe ff ff ff
-//-------------------------------
+const uint8_t MOVE_DATA_BLOCKS[7][42] = {
+    { // Block 0 (ROM 0x330f)
+        /* 330f */ /* pacman normal */      0x55, 0x2a, 0x55, 0x2a, // 14 of 32 = 44%
+        /* 3313 */ /* pacman powered */     0x55, 0x55, 0x55, 0x55, // 16 of 32 = 50%
+        /* 3317 */ /* blinky difficulty2 */ 0x55, 0x2a, 0x55, 0x2a, // 14 if 32 = 44%
+        /* 331b */ /* blinky difficulty1 */ 0x52, 0x4a, 0xa5, 0x94, // 13 of 32 = 41%
+        /* 331f */ /* ghost normal */       0x25, 0x25, 0x25, 0x25, // 12 of 32 = 37.5%
+        /* 3323 */ /* ghost edible */       0x22, 0x22, 0x22, 0x22, // 8 of 32 = 25%
+        /* 3327 */ /* ghost tunnel */       0x01, 0x01, 0x01, 0x01, // 4 of 32 = 12.5%
+        /*
+         * 58 02 -> 0x0258 = 600 frames (10 seconds) -> Scatter Wave 1
+         * 08 07 -> 0x0708 = 1800 frames (30 seconds) -> Chase Wave 1
+         * 60 09 -> 0x0960 = 2400 frames (40 seconds total time) -> Scatter Wave 2
+         * 10 0e -> 0x0E10 = 3600 frames (60 seconds total time) -> Chase Wave 2
+         * 68 10 -> 0x1068 = 4200 frames (70 seconds total time) -> Scatter Wave 3
+         * 70 17 -> 0x1770 = 6000 frames (100 seconds total time) -> Chase Wave 3
+         * 14 19 -> 0x1914 = 6420 frames (107 seconds total time) -> Scatter Wave 4
+         */
+        /* 332b */ /* wave timers */        0x58, 0x02, 0x08, 0x07, 0x60, 0x09, 0x10, 0x0e, 0x68, 0x10, 0x70, 0x17, 0x14, 0x19
+    },
+    { // Block 1 (ROM 0x3339)
+        /* 3339 */ /* pacman normal */      0x52, 0x4a, 0xa5, 0x94, // 14 of 32 = 43.75%
+        /* 333d */ /* pacman powered */     0xaa, 0x2a, 0x55, 0x55, // 15 of 32 = 46.875%
+        /* 3341 */ /* blinky difficulty2 */ 0x55, 0x2a, 0x55, 0x2a, // 14 if 32 = 44%
+        /* 3345 */ /* blinky difficulty1 */ 0x52, 0x4a, 0xa5, 0x94, // 13 of 32 = 41%
+        /* 3349 */ /* ghost normal */       0x92, 0x24, 0x25, 0x49, // 11 of 32 = 34.375%
+        /* 334d */ /* ghost edible */       0x48, 0x24, 0x22, 0x91, // 9 of 32 = 28.125%
+        /* 3351 */ /* ghost tunnel */       0x01, 0x01, 0x01, 0x01, // 4 of 32 = 12.5%
+        /*
+         * Wave timers are 0 for this block
+         */
+        /* 3355 */ /* wave timers */        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    },
+    { // Block 2 (ROM 0x3363)
+        /* 3363 */ /* pacman normal */      0x55, 0x2a, 0x55, 0x2a, // 14 if 32 = 44%
+        /* 3367 */ /* pacman powered */     0x55, 0x55, 0x55, 0x55, // 16 of 32 = 50%
+        /* 336b */ /* blinky difficulty2 */ 0xaa, 0x2a, 0x55, 0x55, // 15 of 32 = 46.875%
+        /* 336f */ /* blinky difficulty1 */ 0x55, 0x2a, 0x55, 0x2a, // 14 if 32 = 44%
+        /* 3373 */ /* ghost normal */       0x52, 0x4a, 0xa5, 0x94, // 13 of 32 = 41%
+        /* 3377 */ /* ghost edible */       0x48, 0x24, 0x22, 0x91, // 9 of 32 = 28.125%
+        /* 337b */ /* ghost tunnel */       0x21, 0x44, 0x44, 0x08, // 7 of 32 = 21.875%
+        /*
+         * 58 02 -> 0x0258 = 600 frames (10 seconds) -> Scatter Wave 1
+         * 34 08 -> 0x0834 = 2100 frames (35 seconds) -> Chase Wave 1
+         * d8 09 -> 0x09D8 = 2520 frames (42 seconds total time) -> Scatter Wave 2
+         * b4 0f -> 0x0FB4 = 4080 frames (68 seconds total time) -> Chase Wave 2
+         * 58 11 -> 0x1158 = 4440 frames (74 seconds total time) -> Scatter Wave 3
+         * 08 16 -> 0x1608 = 5640 frames (94 seconds total time) -> Chase Wave 3
+         * 34 17 -> 0x1734 = 6000 frames (100 seconds total time) -> Scatter Wave 4
+         */
+        /* 337f */ /* wave timers */        0x58, 0x02, 0x34, 0x08, 0xd8, 0x09, 0xb4, 0x0f, 0x58, 0x11, 0x08, 0x16, 0x34, 0x17
+    },
+    { // Block 3 (ROM 0x338d)
+        /* 338d */ /* pacman normal */      0x55, 0x55, 0x55, 0x55, // 16 of 32 = 50%
+        /* 3391 */ /* pacman powered */     0xd5, 0x6a, 0xd5, 0x6a, // 18 of 32 = 56%
+        /* 3395 */ /* blinky difficulty2 */ 0xaa, 0x6a, 0x55, 0xd5, // 17 of 32 = 53%
+        /* 3399 */ /* blinky difficulty1 */ 0x55, 0x55, 0x55, 0x55, // 16 of 32 = 50%
+        /* 339d */ /* ghost normal */       0xaa, 0x2a, 0x55, 0x55, // 15 of 32 = 46.875%
+        /* 33a1 */ /* ghost edible */       0x92, 0x24, 0x92, 0x24, // 10 of 32 = 31.25%
+        /* 33a5 */ /* ghost tunnel */       0x22, 0x22, 0x22, 0x22, // 8 of 32 = 25%
+        /*
+         * a4 01 -> 0x01a4 = 420 frames (7 seconds) -> Scatter Wave 1
+         * 54 06 -> 0x0654 = 1620 frames (27 seconds) -> Chase Wave 1
+         * f8 07 -> 0x07f8 = 2040 frames (34 seconds total time) -> Scatter Wave 2
+         * a8 0c -> 0x0ca8 = 3240 frames (54 seconds total time) -> Chase Wave 2
+         * d4 0d -> 0x0dd4 = 3540 frames (59 seconds total time) -> Scatter Wave 3
+         * 84 12 -> 0x1284 = 4740 frames (79 seconds total time) -> Chase Wave 3
+         * b0 13 -> 0x1734 = 6000 frames (100 seconds total time) -> Scatter Wave 4
+         */
+        /* 33a9 */ /* wave timers */        0xa4, 0x01, 0x54, 0x06, 0xf8, 0x07, 0xa8, 0x0c, 0xd4, 0x0d, 0x84, 0x12, 0xb0, 0x13
+    },
+    { // Block 4 (ROM 0x33b7)
+        /* 33b7 */ /* pacman normal */      0xd5, 0x6a, 0xd5, 0x6a, // 18 of 32 = 56%
+        /* 33bb */ /* pacman powered */     0xd6, 0x5a, 0xad, 0xb5, // 19 of 32 = 59.375%
+        /* 33bf */ /* blinky difficulty2 */ 0xd6, 0x5a, 0xad, 0xb5, // 17 of 32 = 53%
+        /* 33c3 */ /* blinky difficulty1 */ 0xd5, 0x6a, 0xd5, 0x6a, // 16 of 32 = 50%
+        /* 33c7 */ /* ghost normal */       0xaa, 0x6a, 0x55, 0xd5, // 15 of 32 = 46.875%
+        /* 33cb */ /* ghost edible */       0x92, 0x24, 0x25, 0x49, // 11 of 32 = 34.375%
+        /* 33cf */ /* ghost tunnel */       0x48, 0x24, 0x22, 0x91, // 9 of 32 = 28.125%
+        /*
+         * a4 01 -> 0x01a4 = 420 frames (7 seconds) -> Scatter Wave 1
+         * 54 06 -> 0x0654 = 1620 frames (27 seconds) -> Chase Wave 1
+         * f8 07 -> 0x07f8 = 2040 frames (34 seconds total time) -> Scatter Wave 2
+         * a8 0c -> 0x0ca8 = 3240 frames (54 seconds total time) -> Chase Wave 2
+         * d4 0d -> 0x0dd4 = 3540 frames (59 seconds total time) -> Scatter Wave 3
+         * 84 12 -> 0x1284 = 4740 frames (79 seconds total time) -> Chase Wave 3
+         * b0 13 -> 0x1734 = 65535 frames (1092 seconds total time) -> Scatter Wave 4
+         */
+        /* 33d3 */ /* wave timers */        0xa4, 0x01, 0x54, 0x06, 0xf8, 0x07, 0xa8, 0x0c, 0xd4, 0x0d, 0xfe, 0xff, 0xff, 0xff
+    },
+    { // Block 5 (ROM 0x33e1)
+        /* 33e1 */ /* pacman normal */      0x6d, 0x6d, 0x6d, 0x6d, // 20 of 32 = 62.5%
+        /* 33e5 */ /* pacman powered */     0x6d, 0x6d, 0x6d, 0x6d, // 20 of 32 = 62.5%
+        /* 33e9 */ /* blinky difficulty2 */ 0xb6, 0x6d, 0x6d, 0xdb, // 21 of 32 = 65.625%
+        /* 33ed */ /* blinky difficulty1 */ 0x6d, 0x6d, 0x6d, 0x6d, // 20 of 32 = 62.5%
+        /* 33f1 */ /* ghost normal */       0xd6, 0x5a, 0xad, 0xb5, // 19 of 32 = 59.375%
+        /* 33f5 */ /* ghost edible */       0x25, 0x25, 0x25, 0x25, // 10 of 32 = 31.25%
+        /* 33f9 */ /* ghost tunnel */       0x92, 0x24, 0x92, 0x24, // 10 of 32 = 31.25%
+        /*
+         * 2c 01 -> 0x012c = 300 frames (5 seconds) -> Scatter Wave 1
+         * dc 05 -> 0x05dc = 1500 frames (25 seconds) -> Chase Wave 1
+         * 08 07 -> 0x0708 = 1800 frames (30 seconds total time) -> Scatter Wave 2
+         * b8 0b -> 0x0bB8 = 3000 frames (50 seconds total time) -> Chase Wave 2
+         * e4 0c -> 0x0cE4 = 3300 frames (35 seconds total time) -> Scatter Wave 3
+         * fe ff -> 0xfffe = 65534 frames (1092 seconds total time) -> Chase Wave 3
+         * ff ff -> 0xffff = 65535 frames (1092 seconds total time) -> Scatter Wave 4
+         */
+        /* 33fd */ /* wave timers */        0x2c, 0x01, 0xdc, 0x05, 0x08, 0x07, 0xb8, 0x0b, 0xe4, 0x0c, 0xfe, 0xff, 0xff, 0xff
+    },
+    { // Block 6 (ROM 0x340b)
+        /* 340b */ /* pacman normal */      0xd5, 0x6a, 0xd5, 0x6a, // 18 of 32 = 56%
+        /* 340f */ /* pacman powered */     0xd5, 0x6a, 0xd5, 0x6a, // 18 of 32 = 56%
+        /* 3413 */ /* blinky difficulty2 */ 0xb6, 0x6d, 0x6d, 0xdb, // 21 of 32 = 65.625%
+        /* 3417 */ /* blinky difficulty1 */ 0x6d, 0x6d, 0x6d, 0x6d, // 20 of 32 = 62.5%
+        /* 341b */ /* ghost normal */       0xd6, 0x5a, 0xad, 0xb5, // 19 of 32 = 59.375%
+        /* 341f */ /* ghost edible */       0x48, 0x24, 0x22, 0x91, // 9 of 32 = 28.125%
+        /* 3423 */ /* ghost tunnel */       0x92, 0x24, 0x92, 0x24, // 10 of 32 = 31.25%
+        /*
+         * 2c 01 -> 0x012c = 300 frames (5 seconds) -> Scatter Wave 1
+         * dc 05 -> 0x05dc = 1500 frames (25 seconds) -> Chase Wave 1
+         * 08 07 -> 0x0708 = 1800 frames (30 seconds total time) -> Scatter Wave 2
+         * b8 0b -> 0x0bB8 = 3000 frames (50 seconds total time) -> Chase Wave 2
+         * e4 0c -> 0x0cE4 = 3300 frames (35 seconds total time) -> Scatter Wave 3
+         * fe ff -> 0xfffe = 65534 frames (1092 seconds total time) -> Chase Wave 3
+         * ff ff -> 0xffff = 65535 frames (1092 seconds total time) -> Scatter Wave 4
+         */
+        /* 3427 */ /* wave timers */        0x2c, 0x01, 0xdc, 0x05, 0x08, 0x07, 0xb8, 0x0b, 0xe4, 0x0c, 0xfe, 0xff, 0xff, 0xff
+    }
+};
 
 /*  Maze draw data */
 
