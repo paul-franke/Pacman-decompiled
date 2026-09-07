@@ -2609,7 +2609,7 @@ void resetPlayerParams_0879(void) {
   // 0883  2a734e    ld      hl,(#4e73)
   // 0886  220a4e    ld      (#4e0a),hl
   //-------------------------------
-  clearPillArrays_24c9();
+  setPillArrays_24c9();
   P1_CURR_DIFFICULTY = DIFFICULTY_PTR;
   printf("P1DIFF = %04x\n", P1_CURR_DIFFICULTY);
 
@@ -3187,7 +3187,7 @@ void nextLevel_0a7c(void) {
   // 0a7d  32cc4e    ld      (#4ecc),a
   // 0a80  32dc4e    ld      (#4edc),a
   //-------------------------------
-  clearPillArrays_24c9();
+  setPillArrays_24c9();
   CH1_SOUND_WAVE->mask = CH2_SOUND_WAVE->mask = 0;
 
   //-------------------------------
@@ -3202,7 +3202,7 @@ void nextLevel_0a7c(void) {
   // 0a8c  21044e    ld      hl,#4e04
   // 0a8f  34        inc     (hl)
   //-------------------------------
-  clearPillArrays_24c9();
+  setPillArrays_24c9();
   LEVEL_STATE++;
 
   //-------------------------------
@@ -10092,7 +10092,7 @@ void mainTaskLoop_234b(void) {
         homeOrRandomClyde_28b9,
         setupLevelParameters_000d, // 0x10 TASK_SETUP_GHOST_TIMERS
         clearGhostState_26a2,  // 0x11
-        clearPillArrays_24c9,  // 0x12
+        setPillArrays_24c9,  // 0x12
         clearPillsScreen_2a35,
         configureGame_26d0, // 0x14 TASK_CONFIGURE_GAME
         updatePillsFromScreen_2487,
@@ -10180,6 +10180,16 @@ void clearColour_240d(int param) {
   printf("%s\n", __func__);
 }
 
+/*
+ * Screen is mirrored around the middle  
+ * only half of the screen is stored in ROM.  
+ * The other half is a mirror image of the first half.
+ * Mirror tile is drawn in the same iteration as the original tile, 
+ * so we don't have to wait for a second pass to draw the mirror image.
+ * The game reads the data from the maza data byte-by-byte and checks the values:
+ *  If the byte is < 0x80 (e.g., 40, 02, 05): It's a SKIP command. It tells the screen pointer to jump forward by that many spaces, leaving empty space (for paths).
+If the byte is >= 0x80 (e.g., fc, d0, d2): It's a TILE ID. It immediately draws that specific maze wall graphic at the current location.
+ */
 void drawMaze_2419(int param) {
   //-------------------------------
   // 2419  210040    ld      hl,#4000
@@ -10190,6 +10200,21 @@ void drawMaze_2419(int param) {
   uint16_t hl = 0;
   uint8_t *bc = DATA_3435;
 
+  /*
+  * video memory addresses and on screen location: 
+  *                    32x32 grid
+  *    0x43A0 0x4380.............0x4060 0x4040  
+  *    0x43A1 0x4381.............0x4061 0x4041  
+  *    .......................................
+  *    .......................................
+  *    0x43BE 0x439E.............0x407E 0x405E  
+  *    0x43BF 0x439F.............0x407F 0x405F  
+  */
+
+  /* 
+   * Screen is built from top right going down and on each iteration  moving a column to the left. 
+   * Each tile is also mirrored/written on the corresponding mirrored position 
+   */
   while (1) {
     //-------------------------------
     // 241f  0a        ld      a,(bc)
@@ -10204,7 +10229,7 @@ void drawMaze_2419(int param) {
     //-------------------------------
     // 2422  fa2c24    jp      m,#242c
     //-------------------------------
-    if (a < 0x80) {
+    if (a < 0x80) { // if char is less than 0x80 then it is just a command to skip this number of screen bytes i.e. nothing on screen.
       //-------------------------------
       // 2425  5f        ld      e,a
       // 2426  1600      ld      d,#00
@@ -10240,10 +10265,36 @@ void drawMaze_2419(int param) {
     // 243d  ed52      sbc     hl,de
     //-------------------------------
 
-    /*  Slightly complicated formula to work out the mirror-image location
-     *  on screen.  Copy the same byte with the LSB flipped to create the
-     *  mirror */
-    uint16_t tmp = 0x3e0 + (hl & 0x1f) * 2 - hl;
+    /* 
+     * explain formula below:
+     * The screen is a 32x32 grid, giving 1024 total tiles. 
+     * Let's define a coordinate system where r is the row (0 to 31) and c is the column (0 to 31). 
+     * To find the 1-Dimensional index (hl) for any tile, the standard math is: hl = (32 * r) + c
+     * Because the arcade monitor is physically rotated 90 degrees, mirroring the left and 
+     * right sides of the maze actually means we need to reflect the rows in memory.
+     *
+     * Row 0 mirrors to Row 31
+     * Row 1 mirrors to Row 30
+     * Row r mirrors to Row 31 - r
+     * So, the mirrored index we want to calculate is: Target = 32 * (31 - r) + c
+     *
+     * 0x3e0: In decimal, this is 992. Notice that 32 * 31 = 992. This is the exact starting index of the very last row in the grid.
+     * hl & 0x1f: The 0x1f is 31 in decimal. Doing a bitwise AND with 31 efficiently calculates the remainder of hl / 32. In other words, 
+     * it perfectly extracts just the column (c).
+     * 2: Multiplying the column by 2. So we get 2 * c.
+     *
+     *  The Algebra:
+     *  Formula to prove: tmp = 992 + (2 * c) - hl
+     * 
+     *  Let's plug the grid coordinates (hl = 32*r + c) into the formula:
+     *  Substitute hl: tmp = 992 + 2c - (32r + c)
+     *  Subtract the c: tmp = 992 + c - 32r
+     *  Factor out the 32s (since 992 = 32 * 31): tmp = 32 * 31 - 32r + c
+     *  Final simplification: tmp = 32 * (31 - r) + c
+     * 
+     * 
+     */
+    uint16_t tmp = 0x3e0 + (hl & 0x1f) * 2 - hl; // Calculate the mirrored index in the screen array for the current tile. 
     printf(" v[%04x] = %02x\n", tmp, a ^ 1);
 
     //-------------------------------
@@ -10254,11 +10305,16 @@ void drawMaze_2419(int param) {
     // 2444  03        inc     bc
     // 2445  c31f24    jp      #241f
     //-------------------------------
-    SCREEN[tmp] = a ^ 1;
+    SCREEN[tmp] = a ^ 1; // Draw the mirrored byte on the screen. See als character set in ROM 0x3e0-0x3ff. The LSB is flipped to create the mirror image.
     bc++;
   }
 }
 
+/*
+ * Draw pills on the screen using the pill array 0x4e16-0x4e34 in RAM and the delta offsets (in 0x35b5-0x35d3 in original game, 
+ * now in table PILLS_DELTA_ADDRESS_ENCODINGin software).
+ * Each bit in the pill array corresponds to a pill on the screen. If the bit is set, draw a pill (0x10) at the corresponding screen location.
+ */
 void drawPills_2448(int param) {
   //-------------------------------
   // 2448  210040    ld      hl,#4000
@@ -10268,11 +10324,16 @@ void drawPills_2448(int param) {
   uint8_t *hl = SCREEN;
   uint8_t *ix = P1_PILL_ARRAY;
   const uint8_t *iy = PILLS_DELTA_ADDRESS_ENCODING;
+  const uint8_t NUMBER_OF_DATA_BYTES = 0x1e; // 30 data bytes in memory to store 30 * 8 = 240 pills data
+  const uint16_t POWER_PILL_INDEX_UPPER_RIGHT = 0x64;
+  const uint16_t POWER_PILL_INDEX_LOWER_RIGHT = 0x78;
+  const uint16_t POWER_PILL_INDEX_LOWER_LEFT = 0x384;
+  const uint16_t POWER_PILL_INDEX_UPPER_LEFT = 0x398;
   //-------------------------------
   // 2453  1600      ld      d,#00
   // 2455  061e      ld      b,#1e
   //-------------------------------
-  for (int b = 0; b < 0x1e; b++) {
+  for (int b = 0; b < NUMBER_OF_DATA_BYTES; b++) { 
     //-------------------------------
     // 2457  0e08      ld      c,#08
     // 2459  dd7e00    ld      a,(ix+#00)
@@ -10283,29 +10344,29 @@ void drawPills_2448(int param) {
       // 245c  fd5e00    ld      e,(iy+#00)
       // 245f  19        add     hl,de
       //-------------------------------
-      hl += *iy;
+      hl += *iy; // Add the delta offset to hl to get the screen address for this pill
 
       //-------------------------------
       // 2460  07        rlca
       // 2461  3002      jr      nc,#2465        ; (2)
       // 2463  3610      ld      (hl),#10
       //-------------------------------
-      if (*ix & (0x80 >> c))
-        *hl = CHAR_PILL;
+      if (*ix & (0x80 >> c)) // Check if the c-th bit of the current byte in P1_PILL_ARRAY is set
+        *hl = CHAR_PILL; // If set, draw a pill (0x10) at the calculated screen address
 
       //-------------------------------
       // 2465  fd23      inc     iy
       // 2467  0d        dec     c
       // 2468  20f2      jr      nz,#245c        ; (-14)
       //-------------------------------
-      iy++;
+      iy++; // Move to the next delta offset for the next pill
     }
     //-------------------------------
     // 246a  dd23      inc     ix
     // 246c  05        dec     b
     // 246d  20e8      jr      nz,#2457        ; (-24)
     //-------------------------------
-    ix++;
+    ix++; // next data byte in P1_PILL_ARRAY
   }
   //-------------------------------
   // 246f  21344e    ld      hl,#4e34
@@ -10319,15 +10380,17 @@ void drawPills_2448(int param) {
   // 2484  eda0      ldi
   // 2486  c9        ret
   //-------------------------------
-  SCREEN[0x64] = P1_POWERUP_ARRAY[0];
-  SCREEN[0x78] = P1_POWERUP_ARRAY[1];
-  SCREEN[0x384] = P1_POWERUP_ARRAY[2];
-  SCREEN[0x398] = P1_POWERUP_ARRAY[3];
+  SCREEN[POWER_PILL_INDEX_UPPER_RIGHT] = P1_POWERUP_ARRAY[0];
+  SCREEN[POWER_PILL_INDEX_LOWER_RIGHT] = P1_POWERUP_ARRAY[1];
+  SCREEN[POWER_PILL_INDEX_LOWER_LEFT] = P1_POWERUP_ARRAY[2];
+  SCREEN[POWER_PILL_INDEX_UPPER_LEFT] = P1_POWERUP_ARRAY[3];
 }
 
-/*  Build bytes in pill array 0x4e16-0x4e34 1 bit at a time by reading screen
+/*  
+ * Build bytes in pill array 0x4e16-0x4e34 1 bit at a time by reading screen
  * offsets from a ROM table and checking if the byte on the screen at that
- * offset == 0x10 */
+ * offset == 0x10 
+ */
 void updatePillsFromScreen_2487(int param) {
   //-------------------------------
   // 2487  210040    ld      hl,#4000
@@ -10339,13 +10402,18 @@ void updatePillsFromScreen_2487(int param) {
   int hl = 0;
   uint8_t *ix = P1_PILL_ARRAY;
   const uint8_t *iy = PILLS_DELTA_ADDRESS_ENCODING;
+  const uint8_t NUMBER_OF_DATA_BYTES = 0x1e; // 30 data bytes in memory to store 30 * 8 = 240 pills data
+  const uint16_t POWER_PILL_INDEX_UPPER_RIGHT = 0x64;
+  const uint16_t POWER_PILL_INDEX_LOWER_RIGHT = 0x78;
+  const uint16_t POWER_PILL_INDEX_LOWER_LEFT = 0x384;
+  const uint16_t POWER_PILL_INDEX_UPPER_LEFT = 0x398;
 
-  for (int b = 0; b < 0x1e; b++) {
+  for (int b = 0; b < NUMBER_OF_DATA_BYTES; b++) {// 30 data bytes in memory to store 30 * 8 = 240 pills data
     //-------------------------------
     // 2496  0e08      ld      c,#08
     //-------------------------------
 
-    for (int c = 0; c < 8; c++) {
+    for (int c = 0; c < 8; c++) { // 8 bits in each byte of the pill array
       //-------------------------------
       // 2498  fd5e00    ld      e,(iy+#00)
       // 249b  19        add     hl,de
@@ -10359,7 +10427,7 @@ void updatePillsFromScreen_2487(int param) {
       hl += *iy;
       *ix <<= 1;
 
-      if (SCREEN[hl] == 0x10)
+      if (SCREEN[hl] == 0x10) // If the screen byte at the calculated offset is 0x10 (pill), set the LSB of the current pill array byte
         *ix |= 1;
 
       //-------------------------------
@@ -10367,7 +10435,7 @@ void updatePillsFromScreen_2487(int param) {
       // 24a9  0d        dec     c
       // 24aa  20ec      jr      nz,#2498        ; (-20)
       //-------------------------------
-      iy++;
+      iy++; // Move to the next delta offset for the next pill
     }
 
     //-------------------------------
@@ -10375,7 +10443,7 @@ void updatePillsFromScreen_2487(int param) {
     // 24ae  05        dec     b
     // 24af  20e5      jr      nz,#2496        ; (-27)
     //-------------------------------
-    ix++;
+    ix++; // Move to the next byte in the pill array
   }
 
   //-------------------------------
@@ -10390,13 +10458,16 @@ void updatePillsFromScreen_2487(int param) {
   // 24c6  eda0      ldi
   // 24c8  c9        ret
   //-------------------------------
-  P1_POWERUP_ARRAY[0] = SCREEN[0x64];
-  P1_POWERUP_ARRAY[1] = SCREEN[0x78];
-  P1_POWERUP_ARRAY[2] = SCREEN[0x384];
-  P1_POWERUP_ARRAY[3] = SCREEN[0x398];
+  P1_POWERUP_ARRAY[0] = SCREEN[POWER_PILL_INDEX_UPPER_RIGHT];
+  P1_POWERUP_ARRAY[1] = SCREEN[POWER_PILL_INDEX_LOWER_RIGHT];
+  P1_POWERUP_ARRAY[2] = SCREEN[POWER_PILL_INDEX_LOWER_LEFT];
+  P1_POWERUP_ARRAY[3] = SCREEN[POWER_PILL_INDEX_UPPER_LEFT];
 }
 
-void clearPillArrays_24c9() {
+/*
+ * Sets the pill arrays all active.
+ */
+void setPillArrays_24c9() {
   //-------------------------------
   // 24c9  21164e    ld      hl,#4e16
   // 24cc  3eff      ld      a,#ff
@@ -10407,8 +10478,8 @@ void clearPillArrays_24c9() {
   // 24d5  cf        rst     #8
   // 24d6  c9        ret
   //-------------------------------
-  memset(P1_PILL_ARRAY, 0xff, 0x1e);
-  memset(P1_POWERUP_ARRAY, 0x14, 0x4);
+  memset(P1_PILL_ARRAY, 0xff, 0x1e);  // Set all bits in the pill array to 1 (indicating all pills are present) 
+  memset(P1_POWERUP_ARRAY, 0x14, 0x4); // Set all bytes in the power-up array to 0x14 (indicating all power-ups are present)
 }
 
 void mazeColours_24d7(int param) {
@@ -14905,6 +14976,17 @@ const uint8_t MOVE_DATA_BLOCKS[7][42] = {
 //-------------------------------
 
 /*  Pill draw data  - 0x1e x 8 = 0xf0 entries */
+/*
+ * Video RAM for the screen starts at address 0x4000.
+ * The game initializes a pointer to 0x4000.
+ * It then iterates through the data table byte-by-byte, adding each byte to the running pointer to find the next pill's address.
+
+ * Start: Pointer = 0x4000
+ * Pill 1: Read 0x62. Pointer becomes 0x4000 + 0x62 = 0x4062. (Address of the 1st pill)
+ * Pill 2: Read 0x01. Pointer becomes 0x4062 + 0x01 = 0x4063. (Address of the 2nd pill)
+ * Pill 3: Read 0x02. Pointer becomes 0x4063 + 0x02 = 0x4065. (Address of the 3rd pill)
+ * Pill 4: Read 0x01. Pointer becomes 0x4065 + 0x01 = 0x4066. (Address of the 4th pill)
+*/
 const uint8_t PILLS_DELTA_ADDRESS_ENCODING[240] = {
 /*35b5*/  0x62, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01, 0x0c, 0x01, 0x01, 0x04,
 /*35c0*/  0x01, 0x01, 0x01, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x03, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x01,

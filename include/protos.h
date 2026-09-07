@@ -251,7 +251,7 @@ void clearColour_240d(int param);
 void drawMaze_2419(int param);
 void drawPills_2448(int param);
 void updatePillsFromScreen_2487(int param);
-void clearPillArrays_24c9();
+void setPillArrays_24c9();
 void mazeColours_24d7(int param);
 void initialisePositions_25d3(int param);
 void resetPositions_2675();
