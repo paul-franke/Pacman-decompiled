@@ -33,13 +33,6 @@
 #include "protos.h"
 #include "structs.h"
 
-/* Forward declarations for difficulty and move data tables */
-extern const uint8_t LEVEL_DIFFICULTY_PARAMS[21][6];
-extern const uint8_t LEAVE_HOME_COUNTERS[4][3];
-extern const uint8_t CRUISE_ELROY_THRESHOLDS[9][2];
-extern const uint16_t GHOST_EDIBLE_TIMES[9];
-extern const uint16_t GLOBAL_LEAVE_HOME_TIMERS[3];
-extern const uint8_t MOVE_DATA_BLOCKS[7][42];
 
 void reset_0000(void) {
   //-------------------------------
@@ -850,7 +843,7 @@ void checkCoinInput_0267(void) {
    * 1111 (15) = Switch has been closed for 4+ frames.
   */
   /*
-   * It checks if the history equals 12 (1100 in binary). What does 1100 mean? 
+   * It checks if the history equals 0x0c (12) (1100 in binary). What does 1100 mean? 
    * Two frames ago and three frames ago, the switch was CLOSED (11..).
    * Last frame and this frame, the switch was OPEN (..00).
    * This specific pattern means: The switch was pressed, held for a short time, 
@@ -873,7 +866,7 @@ void checkCoinInput_0267(void) {
   // 0281  d60c      sub     #0c
   // 0283  ccdf02    call    z,#02df		; Add Coin
   //-------------------------------
-  if (SERVICE1_DEBOUNCE == 12)
+  if (SERVICE1_DEBOUNCE == 0x0c)
     checkCoinCredit_02df();
 
   //-------------------------------
@@ -891,7 +884,7 @@ void checkCoinInput_0267(void) {
   // 0296  21694e    ld      hl,#4e69
   // 0299  34        inc     (hl)
   //-------------------------------
-  if (COIN2_DEBOUNCE == 0xc)
+  if (COIN2_DEBOUNCE == 0x0c)
     COIN_COUNTER++;
   
   //-------------------------------
@@ -907,7 +900,7 @@ void checkCoinInput_0267(void) {
   // 02a5  d60c      sub     #0c
   // 02a7  c0        ret     nz
   //-------------------------------
-  if (COIN1_DEBOUNCE != 0xc)
+  if (COIN1_DEBOUNCE != 0x0c)
     return;
 
   //-------------------------------
@@ -9023,6 +9016,7 @@ void checkGhostEnterTunnel_205a(XYPOS pos, uint8_t *aux) {
   }
 }
 
+#define PINKY_LEAVE_HOME_COUNTER_AFTER_PREVIOUS_PACMAN_DEATH 0x07
 void pinkyCheckLeaveHouse_2069(void) {
   //-------------------------------
   // 2069  3aa14d    ld      a,(#4da1)
@@ -9037,14 +9031,14 @@ void pinkyCheckLeaveHouse_2069(void) {
   // 2071  a7        and     a
   // 2072  ca7e20    jp      z,#207e
   //-------------------------------
-  if (P1_DIED_IN_LEVEL) {
+  if (P1_DIED_IN_LEVEL) { // If Pac-Man has died previously on this level, the game uses a constant otherwise the standard difficulty tables
     //-------------------------------
     // 2075  3a9f4d    ld      a,(#4d9f)
     // 2078  fe07      cp      #07
     // 207a  c0        ret     nz
     // 207b  c38620    jp      #2086
     //-------------------------------
-    if (EATEN_PILLS_COUNT != 7)
+    if (EATEN_PILLS_COUNT != PINKY_LEAVE_HOME_COUNTER_AFTER_PREVIOUS_PACMAN_DEATH)
       return;
   } else {
     //-------------------------------
@@ -9066,6 +9060,7 @@ void pinkyCheckLeaveHouse_2069(void) {
   PINKY_SUBSTATE = SUBSTATE_LEAVING_HOUSE;
 }
 
+#define INKY_LEAVE_HOME_COUNTER_AFTER_PREVIOUS_PACMAN_DEATH 0x11
 void inkyCheckLeaveHouse_208c(void) {
   //-------------------------------
   // 208c  3aa24d    ld      a,(#4da2)
@@ -9080,14 +9075,14 @@ void inkyCheckLeaveHouse_208c(void) {
   // 2094  a7        and     a
   // 2095  caa120    jp      z,#20a1
   //-------------------------------
-  if (P1_DIED_IN_LEVEL) {
+  if (P1_DIED_IN_LEVEL) { // If Pac-Man has died previously on this level, the game uses a constant otherwise the standard difficulty tables
     //-------------------------------
     // 2098  3a9f4d    ld      a,(#4d9f)
     // 209b  fe11      cp      #11
     // 209d  c0        ret     nz
     // 209e  c3a920    jp      #20a9
     //-------------------------------
-    if (EATEN_PILLS_COUNT != 0x11)
+    if (EATEN_PILLS_COUNT != INKY_LEAVE_HOME_COUNTER_AFTER_PREVIOUS_PACMAN_DEATH)
       return;
   } else {
     //-------------------------------
@@ -9110,6 +9105,7 @@ void inkyCheckLeaveHouse_208c(void) {
   INKY_SUBSTATE = SUBSTATE_HOUSE_MOVE;
 }
 
+#define CLYDE_LEAVE_HOME_COUNTER_AFTER_PREVIOUS_PACMAN_DEATH 0x20
 void clydeCheckLeaveHouse_20af(void) {
   //-------------------------------
   // 20af  3aa34d    ld      a,(#4da3)
@@ -9124,13 +9120,13 @@ void clydeCheckLeaveHouse_20af(void) {
   // 20b7  a7        and     a
   // 20b8  cac920    jp      z,#20c9
   //-------------------------------
-  if (P1_DIED_IN_LEVEL) {
+  if (P1_DIED_IN_LEVEL) {  // If Pac-Man has died previously on this level, the game uses a constant otherwise the standard difficulty tables 
     //-------------------------------
     // 20bb  3a9f4d    ld      a,(#4d9f)
     // 20be  fe20      cp      #20
     // 20c0  c0        ret     nz
     //-------------------------------
-    if (EATEN_PILLS_COUNT != 0x20)
+    if (EATEN_PILLS_COUNT != CLYDE_LEAVE_HOME_COUNTER_AFTER_PREVIOUS_PACMAN_DEATH)
       return;
 
     //-------------------------------
@@ -10271,7 +10267,7 @@ void drawPills_2448(int param) {
   //-------------------------------
   uint8_t *hl = SCREEN;
   uint8_t *ix = P1_PILL_ARRAY;
-  uint8_t *iy = DATA_35b5;
+  const uint8_t *iy = PILLS_DELTA_ADDRESS_ENCODING;
   //-------------------------------
   // 2453  1600      ld      d,#00
   // 2455  061e      ld      b,#1e
@@ -10342,7 +10338,7 @@ void updatePillsFromScreen_2487(int param) {
   //-------------------------------
   int hl = 0;
   uint8_t *ix = P1_PILL_ARRAY;
-  uint8_t *iy = DATA_35b5;
+  const uint8_t *iy = PILLS_DELTA_ADDRESS_ENCODING;
 
   for (int b = 0; b < 0x1e; b++) {
     //-------------------------------
@@ -14909,25 +14905,24 @@ const uint8_t MOVE_DATA_BLOCKS[7][42] = {
 //-------------------------------
 
 /*  Pill draw data  - 0x1e x 8 = 0xf0 entries */
-
-//-------------------------------
-// 35b5                 62 01 02  01 01 01 01 0c 01 01 04
-// 35c0  01 01 01 04 04 03 0c 03  03 03 04 04 03 0c 03 01
-// 35d0  01 01 03 04 04 03 0c 06  03 04 04 03 0c 06 03 04
-// 35e0  01 01 01 01 01 01 01 01  01 01 01 01 01 01 01 01
-// 35f0  01 01 01 01 01 01 01 01  01 03 04 04 0f 03 06 04
-// 3600  04 0f 03 06 04 04 01 01  01 0c 03 01 01 01 03 04
-// 3610  04 03 0c 03 03 03 04 04  03 0c 03 03 03 04 01 01
-// 3620  01 01 03 0c 01 01 01 03  01 01 01 08 18 08 18 04
-// 3630  01 01 01 01 03 0c 01 01  01 03 01 01 01 04 04 03
-// 3640  0c 03 03 03 04 04 03 0c  03 03 03 04 04 01 01 01
-// 3650  0c 03 01 01 01 03 04 04  0f 03 06 04 04 0f 03 06
-// 3660  04 01 01 01 01 01 01 01  01 01 01 01 01 01 01 01
-// 3670  01 01 01 01 01 01 01 01  01 01 03 04 04 03 0c 06
-// 3680  03 04 04 03 0c 06 03 04  04 03 0c 03 01 01 01 03
-// 3690  04 04 03 0c 03 03 03 04  01 02 01 01 01 01 0c 01
-// 36a0  01 04 01 01 01
-//-------------------------------
+const uint8_t PILLS_DELTA_ADDRESS_ENCODING[240] = {
+/*35b5*/  0x62, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01, 0x0c, 0x01, 0x01, 0x04,
+/*35c0*/  0x01, 0x01, 0x01, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x03, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x01,
+/*36d0*/  0x01, 0x01, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x06, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x06, 0x03, 0x04,
+/*36e0*/  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+/*36f0*/  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x03, 0x04, 0x04, 0x0f, 0x03, 0x06, 0x04,
+/*3600*/  0x04, 0x0f, 0x03, 0x06, 0x04, 0x04, 0x01, 0x01, 0x01, 0x0c, 0x03, 0x01, 0x01, 0x01, 0x03, 0x04,
+/*3610*/  0x04, 0x03, 0x0c, 0x03, 0x03, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x03, 0x03, 0x04, 0x01, 0x01,
+/*3620*/  0x01, 0x01, 0x03, 0x0c, 0x01, 0x01, 0x01, 0x03, 0x01, 0x01, 0x01, 0x08, 0x18, 0x08, 0x18, 0x04,
+/*3630*/  0x01, 0x01, 0x01, 0x01, 0x03, 0x0c, 0x01, 0x01, 0x01, 0x03, 0x01, 0x01, 0x01, 0x04, 0x04, 0x03,
+/*3640*/  0x0c, 0x03, 0x03, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x03, 0x03, 0x04, 0x04, 0x01, 0x01, 0x01,
+/*3650*/  0x0c, 0x03, 0x01, 0x01, 0x01, 0x03, 0x04, 0x04, 0x0f, 0x03, 0x06, 0x04, 0x04, 0x0f, 0x03, 0x06,
+/*3660*/  0x04, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+/*3670*/  0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x06,
+/*3680*/  0x03, 0x04, 0x04, 0x03, 0x0c, 0x06, 0x03, 0x04, 0x04, 0x03, 0x0c, 0x03, 0x01, 0x01, 0x01, 0x03,
+/*3690*/  0x04, 0x04, 0x03, 0x0c, 0x03, 0x03, 0x03, 0x04, 0x01, 0x02, 0x01, 0x01, 0x01, 0x01, 0x0c, 0x01,
+/*36a0*/  0x01, 0x04, 0x01, 0x01, 0x01
+};
 
 // 	;; Indirect Lookup table for 2c5e routine  (0x48 entries)
 //-------------------------------

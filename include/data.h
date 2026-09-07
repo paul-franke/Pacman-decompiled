@@ -26,11 +26,12 @@
 #include "memmap.h"
 
 #define DATA_0219 (&ROM[0x0219])
-#define DATA_0796 (&ROM[0x0796])
-#define DATA_0843 (&ROM[0x0843])
-#define DATA_084f (&ROM[0x084f])
-#define DATA_0861 (&ROM[0x0861])
-#define DATA_0873 (&ROM[0x0873])
+
+extern const uint8_t LEVEL_DIFFICULTY_PARAMS[21][6]; // #define DATA_0796 (&ROM[0x0796])
+extern const uint8_t LEAVE_HOME_COUNTERS[4][3]; // #define DATA_0843 (&ROM[0x0843])
+extern const uint8_t CRUISE_ELROY_THRESHOLDS[9][2]; // #define DATA_084f (&ROM[0x084f])
+extern const uint16_t GHOST_EDIBLE_TIMES[9]; // #define DATA_0861 (&ROM[0x0861])
+extern const uint16_t GLOBAL_LEAVE_HOME_TIMERS[3]; // #define DATA_0873 (&ROM[0x0873])
 #define FRUIT_DATA_0efd (&ROM[0x0efd])
 #define BONUS_LIFE_DATA (&ROM[0x2728])
 #define DIFFICULTY_DATA ((uint16_t*)(&ROM[0x272c]))
@@ -39,9 +40,9 @@
 #define MOVE_VECTOR_DOWN ((XYPOS*)(&ROM[0x3301]))
 #define MOVE_VECTOR_LEFT ((XYPOS*)(&ROM[0x3303]))
 #define MOVE_VECTOR_UP ((XYPOS*)(&ROM[0x3305]))
-#define MOVE_DATA_330f (&ROM[0x330f])
+extern const uint8_t MOVE_DATA_BLOCKS[7][42]; // #define MOVE_DATA_330f (&ROM[0x330f])
 #define DATA_3435 &ROM[0x3435]
-#define DATA_35b5 (&ROM[0x35b5])
+extern const uint8_t PILLS_DELTA_ADDRESS_ENCODING[240]; // #define DATA_35b5 (&ROM[0x35b5])
 #define EFFECT_TABLE_CH3_3b80 (&ROM[0x3b80])
 #define EFFECT_TABLE_CH1_3b30 (&ROM[0x3b30])
 #define EFFECT_TABLE_CH2_3b40 (&ROM[0x3b40])
