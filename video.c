@@ -112,6 +112,7 @@ void videoPlot (unsigned x, unsigned y, pixel p)
     {
         // fprintf (stderr,"!! SCREEN coords %d,%d out of range\n", x, y);
         // exit(1);
+        return;
     }
 
     /*  Draw a square block of pixels of size (scale x scale) */
@@ -194,24 +195,24 @@ void videoDrawSprite (unsigned px, unsigned py, int shape, int mode, int colour)
              *  non zero */
             if (p.r > 0 || p.g > 0 || p.b > 0)
             {
-                if (px+x >= screenXSize || 
-                    py+y >= screenYSize)
+                int dx = x;
+                int dy = y;
+
+                /* Mirror */
+                if (mode & 2)
+                    dx = 15-dx;
+
+                /* Invert */
+                if (mode & 1)
+                    dy = 15-dy;
+
+                if (px+dx >= screenXSize || 
+                    py+dy >= screenYSize)
                 {
-                    // fprintf (stderr,"SPRITE coords (%d,%d) out of range\n", px+x, py+y);
+                    // fprintf (stderr,"SPRITE coords (%d,%d) out of range\n", px+dx, py+dy);
                 }
                 else
                 {
-                    int dx = x;
-                    int dy = y;
-
-                    /* Mirror */
-                    if (mode & 2)
-                        dx = 15-dx;
-
-                    /* Invert */
-                    if (mode & 1)
-                        dy = 15-dy;
-
                     videoPlot (px + dx, py + dy, p);
                 }
             }
