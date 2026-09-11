@@ -245,7 +245,7 @@ void addISRTask_0051(uint8_t *ptr, int count, uint8_t *data) {
   //-------------------------------
 }
 
-uint16_t getScreenOffset_0065(XYPOS pos) {
+uint16_t getScreenOffset_0065(YXPOS pos) {
   //-------------------------------
   // 0065  c32d20    jp      #202d
   //-------------------------------
@@ -1896,13 +1896,13 @@ void introduceGhost_0593(int c) {
  * The reversed vector is loaded into PACMAN_VECTOR2 (the "desired velocity" buffer), 
  * guaranteeing he smoothly turns on the very next frame.
  */
-XYPOS pacmanReverse_05a5(void) {
+YXPOS pacmanReverse_05a5(void) {
   //-------------------------------
   // 05a5  3ab54d    ld      a,(#4db5)
   // 05a8  a7        and     a
   // 05a9  c8        ret     z
   //-------------------------------
-  XYPOS vector = {0, 0};
+  YXPOS vector = {0, 0};
 
   if (PACMAN_ORIENT_CHG_FLAG == 0)
     return vector;
@@ -6841,7 +6841,7 @@ void pacmanUpdateMovePat_1806(void) {
   // 1815  ca2f18    jp      z,#182f
   //-------------------------------
 
-  if (PACMAN_POWEREDUP != 0) {
+  if (PACMAN_POWEREDUP != 0) { // powerpill is active
     //-------------------------------
     // 1818  2a4c4d    ld      hl,(#4d4c)
     // 181b  29        add     hl,hl
@@ -6858,7 +6858,7 @@ void pacmanUpdateMovePat_1806(void) {
 
     if ((PACMAN_MOVE_PAT_POWERUP & 0x10000) == 0)
       return;
-  } else {
+  } else { //normal move pattern
     //-------------------------------
     // 182f  2a484d    ld      hl,(#4d48)
     // 1832  29        add     hl,hl
@@ -6875,7 +6875,7 @@ void pacmanUpdateMovePat_1806(void) {
     if ((PACMAN_MOVE_PAT_NORMAL & 0x10000) == 0)
       return;
   }
-
+  // pacman is allowed to move
   //-------------------------------
   // 1843  3a0e4e    ld      a,(#4e0e)
   // 1846  329e4d    ld      (#4d9e),a
@@ -7085,15 +7085,20 @@ void pacmanCheckMoveClear_18e4(int noInput) {
   // 18e8  fd21394d  ld      iy,#4d39
   // 18ec  cd0f20    call    #200f
   //-------------------------------
-  int a = getScreenCharPosOffset_200f(PACMAN_VECTOR2, PACMAN_TILE2);
+
+  int a = getScreenCharPosOffset_200f(PACMAN_VECTOR2, PACMAN_TILE2);   
+  // PACMAN_TILE2 is set by the previous run in pacmanUpdatePos_1985(YXPOS pos). 
+  // It has the current tile coordinates of pacman. 
+  // PACMAN_VECTOR2 is the direction pacman wants to move to. 
+  // getScreenCharPosOffset_200f returns the character at the position pacman wants to move to.
 
   //-------------------------------
   // 18ef  e6c0      and     #c0
   // 18f1  d6c0      sub     #c0
   // 18f3  204b      jr      nz,#1940        ; (75)
   //-------------------------------
-  if ((a & CHAR_MAZE_MASK) != CHAR_MAZE_MASK) {
-    pacmanMove_1940(noInput);
+  if ((a & CHAR_MAZE_MASK) != CHAR_MAZE_MASK) { // no wall in the desired direction!
+    pacmanMove_1940(noInput); // do it
     return;
   }
 
@@ -7101,7 +7106,7 @@ void pacmanCheckMoveClear_18e4(int noInput) {
   // 18f5  05        dec     b
   // 18f6  c21619    jp      nz,#1916
   //-------------------------------
-  if (noInput == 1) {
+  if (noInput == 1) {    // no input `from player
     //-------------------------------
     // 18f9  3a304d    ld      a,(#4d30)
     // 18fc  0f        rrca
@@ -7117,13 +7122,13 @@ void pacmanCheckMoveClear_18e4(int noInput) {
 
       /*  Orientation is left or right, check if past mid tile before
        *  allowing direction change */
-      if ((PACMAN_POS.x & 7) == 4)
+      if ((PACMAN_POS.x & 7) == 4)   // pacman is alligned to grid, so he must be stopped now, else he'll go through the wall.
         return;
 
       //-------------------------------
       // 1908  c34019    jp      #1940
       //-------------------------------
-      pacmanMove_1940(1);
+      pacmanMove_1940(1);  // still some pixels for pacman to move, so let him slide
       return;
     } else {
       //-------------------------------
@@ -7150,7 +7155,10 @@ void pacmanCheckMoveClear_18e4(int noInput) {
   // 1916  dd211c4d  ld      ix,#4d1c
   // 191a  cd0f20    call    #200f
   //-------------------------------
+
   a = getScreenCharPosOffset_200f(PACMAN_VECTOR, PACMAN_TILE2);
+  // now we use PACMAN_VECTOR instead of PACMAN_VECTOR2. PACMAN_VECTOR is the current direction pacman is moving in.
+  // so we are now ignoring the faulty input and checking if pacman can continue moving in the current direction.
 
   //-------------------------------
   // 191d  e6c0      and     #c0
@@ -7158,7 +7166,7 @@ void pacmanCheckMoveClear_18e4(int noInput) {
   // 1921  202d      jr      nz,#1950        ; (45)
   //-------------------------------
   if ((a & CHAR_MAZE_MASK) != CHAR_MAZE_MASK) {
-    pacmanMove_1950();
+    pacmanMove_1950();  //ignore input and continue moving in the current direction
     return;
   }
 
@@ -7225,7 +7233,7 @@ void pacmanMove_1950(void) {
   // 1954  fd21084d  ld      iy,#4d08
   // 1958  cd0020    call    #2000
   //-------------------------------
-  XYPOS pacmanXY = addXYOffset_2000(PACMAN_VECTOR, PACMAN_POS);
+  YXPOS pacmanXY = addXYOffset_2000(PACMAN_VECTOR, PACMAN_POS);
 
   //-------------------------------
   // 195b  3a304d    ld      a,(#4d30)
@@ -7286,7 +7294,17 @@ void pacmanMove_1950(void) {
 }
 
 /*  Pass in pacman XY pixel coords in hl */
-void pacmanUpdatePos_1985(XYPOS pos) {
+/*
+ * Called by main loop.
+ * Update pacman position and tile coordinates.  If pacman is in the tunnel
+ * then clear the tunnel flag and return. Flag will be reset in pacmanUpdateMovePat_1806 is still in tunnel. 
+ * If pacman is in tunnel rest of processing can be skipped.
+ * If pacman is at the fruit position and fruit present then add the fruit points to the score, display the points, reset the fruit state,
+ * and play the fruit sound effect.  
+ * If pacman is at a pill or powerpill then increment the pill count and return.  
+ * Else return/do nothing. 
+ */
+void pacmanUpdatePos_1985(YXPOS pos) {
   printf("%s\n", __func__);
   //-------------------------------
   // 1985  22084d    ld      (#4d08),hl
@@ -7369,7 +7387,7 @@ void pacmanUpdatePos_1985(XYPOS pos) {
   // 19d2  2a394d    ld      hl,(#4d39)
   // 19d5  cd6500    call    #0065
   //-------------------------------
-  PACMAN_MOVE_DELAY = 0xff;
+  PACMAN_MOVE_DELAY = 0xff;  // 0xff means pacman is allowed to move with zero delay.
   uint16_t addr = getScreenOffset_0065(PACMAN_TILE2);
 
   //-------------------------------
@@ -7539,7 +7557,7 @@ void pacmanMove_1a5c(void) {
   // 1a64  cd0020    call    #2000
   // 1a67  c38519    jp      #1985
   //-------------------------------
-  XYPOS pos = addXYOffset_2000(PACMAN_VECTOR, PACMAN_POS);
+  YXPOS pos = addXYOffset_2000(PACMAN_VECTOR, PACMAN_POS);
   pacmanUpdatePos_1985(pos);
 }
 
@@ -8606,7 +8624,7 @@ bool checkTunnelWrap_1ed0(int ghost) {
   // 1ed8  7e        ld      a,(hl)
   //-------------------------------
   /*  Note 4d09 is odd, it's 4d08 + 1 which is (blinky-1).x */
-  XYPOS *tile = &BLINKY_TILE + ghost - 1;
+  YXPOS *tile = &BLINKY_TILE + ghost - 1;
   printf("%s check %04lx x=%02x\n", __func__, (uint8_t *)tile - MEM, tile->x);
 
   //-------------------------------
@@ -8877,7 +8895,7 @@ void clydeReverse_1f7c(void) {
  *
  *  returns new position
  */
-XYPOS addXYOffset_2000(XYPOS ix, XYPOS iy) {
+YXPOS addXYOffset_2000(YXPOS ix, YXPOS iy) {
   //-------------------------------
   // 2000  fd7e00    ld      a,(iy+#00)
   // 2003  dd8600    add     a,(ix+#00)
@@ -8892,7 +8910,7 @@ XYPOS addXYOffset_2000(XYPOS ix, XYPOS iy) {
   return ix;
 }
 
-uint8_t getScreenCharPosOffset_200f(XYPOS offset, XYPOS pos) {
+uint8_t getScreenCharPosOffset_200f(YXPOS offset, YXPOS pos) {
   //-------------------------------
   // 200f  cd0020    call    #2000
   // 2012  cd6500    call    #0065
@@ -8908,7 +8926,7 @@ uint8_t getScreenCharPosOffset_200f(XYPOS offset, XYPOS pos) {
   return SCREEN[addr];
 }
 
-XYPOS pixelToTile_2018(XYPOS pos) {
+YXPOS pixelToTile_2018(YXPOS pos) {
   //-------------------------------
   // 2018  7d        ld      a,l
   // 2019  cb3f      srl     a
@@ -8917,7 +8935,7 @@ XYPOS pixelToTile_2018(XYPOS pos) {
   // 201f  c620      add     a,#20
   // 2021  6f        ld      l,a
   //-------------------------------
-  pos.y = (pos.y >> 3) + 0x20;
+  pos.y = (pos.y >> 3) + 0x20;  // least 3 bits are pixel offset within tile, add 0x20 to get tile offset
 
   //-------------------------------
   // 2022  7c        ld      a,h
@@ -8928,12 +8946,12 @@ XYPOS pixelToTile_2018(XYPOS pos) {
   // 202b  67        ld      h,a
   // 202c  c9        ret
   //-------------------------------
-  pos.x = (pos.x >> 3) + 0x1e;
+  pos.x = (pos.x >> 3) + 0x1e; // least 3 bits are pixel offset within tile, add 0x1e to get tile offset
   return pos;
 }
 
 /*  Convert tile x y to screen address */
-uint16_t getScreenOffset_202d(XYPOS hl) {
+uint16_t getScreenOffset_202d(YXPOS hl) {
   printf("%s convert %d,%d to ", __func__, hl.x, hl.y);
   //-------------------------------
   // 202d  f5        push    af
@@ -8978,7 +8996,7 @@ uint16_t getScreenOffset_202d(XYPOS hl) {
 
 /* Gets a screen offset and converts into an offset in the colour table by
  * adding 0x400.  Since we use a separate array, we don't do the add */
-uint16_t getColourOffset_2052(XYPOS pos) {
+uint16_t getColourOffset_2052(YXPOS pos) {
   //-------------------------------
   // 2052  cd6500    call    #0065
   // 2055  110004    ld      de,#0400
@@ -8988,7 +9006,7 @@ uint16_t getColourOffset_2052(XYPOS pos) {
   return getScreenOffset_0065(pos);
 }
 
-void checkGhostEnterTunnel_205a(XYPOS pos, uint8_t *aux) {
+void checkGhostEnterTunnel_205a(YXPOS pos, uint8_t *aux) {
   //-------------------------------
   // 205a  cd5220    call    #2052
   //-------------------------------
@@ -9324,7 +9342,7 @@ void scene1State2_214b(void) {
   // 2163  3a3c4d    ld      a,(#4d3c)
   // 2166  32304d    ld      (#4d30),a
   //-------------------------------
-  XYPOS vector = pacmanReverse_05a5();
+  YXPOS vector = pacmanReverse_05a5();
   PACMAN_VECTOR = vector;
   PACMAN_ORIENTATION = PACMAN_DESIRED_ORIENTATION;
 
@@ -10080,30 +10098,30 @@ void mainTaskLoop_234b(void) {
         drawPills_2448,           // 3
         initialisePositions_25d3, // 4 TASK_INIT_POSITIONS
         blinkySubstateTBD_268b,   // 5
-        clearColour_240d,
-        resetGameState_2698,
+        clearColour_240d, //  6 TASK_CLEAR_COLOUR
+        resetGameState_2698, // 7 TASK_RESET_GAME_STATE
         blinkyScatterOrChase_2730, // 8 TASK_SCATTER_CHASE_BLINKY
-        pinkyScatterOrChase_276c,
-        inkyScatterOrChase_27a9,
-        clydeScatterOrChase_27f1,
+        pinkyScatterOrChase_276c,  // 9 TASK_SCATTER_CHASE_PINKY
+        inkyScatterOrChase_27a9, // 0x0a TASK_SCATTER_CHASE_INKY
+        clydeScatterOrChase_27f1, // 0x0b TASK_SCATTER_CHASE_CLYDE
         homeOrRandomBlinky_283b, // 0x0c TASK_HOME_RANDOM_BLINKY
-        homeOrRandomPinky_2865,
-        homeOrRandomInky_288f,
-        homeOrRandomClyde_28b9,
+        homeOrRandomPinky_2865, // 0x0d TASK_HOME_RANDOM_PINKY
+        homeOrRandomInky_288f, // 0x0e TASK_HOME_RANDOM_INKY
+        homeOrRandomClyde_28b9, // 0x0f TASK_HOME_RANDOM_CLYDE
         setupLevelParameters_000d, // 0x10 TASK_SETUP_GHOST_TIMERS
         clearGhostState_26a2,  // 0x11
         setPillArrays_24c9,  // 0x12
-        clearPillsScreen_2a35,
+        clearPillsScreen_2a35, // 0x13 TASK_CLEAR_PILLS
         configureGame_26d0, // 0x14 TASK_CONFIGURE_GAME
-        updatePillsFromScreen_2487,
-        advanceLevelState_23e8,
+        updatePillsFromScreen_2487, // 0x15 TASK_UPDATE_PILLS
+        advanceLevelState_23e8, // 0x16 TASK_ADVANCE_LEVEL
         pacmanOrientationDemo_28e3,           // 0x17 TASK_PACMAN_ORIENT
         clearScores_2ae0,                     // 0x18 TASK_CLEAR_SCORES
         addToScore_2a5a,                      // 0x19 TASK_ADD_TO_SCORE
         bottomTextColourAndDisplayLives_2b6a, // 0x1A TASK_BOTTOM_COLOUR
         fruitHistoryLevelCheck_2bea,          // 0x1b
         displayMsg_2c5e,                      // 0x1c TASK_DISPLAY_MSG
-        displayCredits_2ba1,
+        displayCredits_2ba1, // 0x1d TASK_DISPLAY_CREDITS
         resetPositions_2675,    // 0x1e
         showBonusLifeScore_26b2 // 0x1f
     };
@@ -10198,7 +10216,7 @@ void drawMaze_2419(int param) {
 
   printf("%s\n", __func__);
   uint16_t hl = 0;
-  uint8_t *bc = DATA_3435;
+  const uint8_t *bc = MAZE_DRAW_DATA;
 
   /*
   * video memory addresses and on screen location: 
@@ -10493,9 +10511,9 @@ void mazeColours_24d7(int param) {
   //-------------------------------
   int a;
   if (param == 2)
-    a = 0x1f;
+    a = 0x1f;   // for maze flashing, set colour to 0x1f (white)
   else
-    a = 0x10;
+    a = 0x10;   // normal maze color
 
   //-------------------------------
   // 24e1  214044    ld      hl,#4440
@@ -10504,7 +10522,7 @@ void mazeColours_24d7(int param) {
   // 24e8  0d        dec     c
   // 24e9  20fc      jr      nz,#24e7        ; (-4)
   //-------------------------------
-  memset(COLOUR + 0x40, a, 0x380);
+  memset(COLOUR + 0x40, a, 0x380); // fills the complete maze area of the color RAM with the specified color (either 0x10 or 0x1f)
 
   //-------------------------------
   // 24eb  3e0f      ld      a,#0f
@@ -10512,14 +10530,14 @@ void mazeColours_24d7(int param) {
   // 24ef  21c047    ld      hl,#47c0
   // 24f2  cf        rst     #8
   //-------------------------------
-  memset(COLOUR + 0x3c0, 0xf, 0x40);
+  memset(COLOUR + 0x3c0, 0xf, 0x40); // fills the top border of the screen area with the specified color (0x0f)
 
   //-------------------------------
   // 24f3  7b        ld      a,e
   // 24f4  fe01      cp      #01
   // 24f6  c0        ret     nz
   //-------------------------------
-  if (param != 1)
+  if (param != 1)  // for only flashing you cant exit now
     return;
 
   //-------------------------------
@@ -10529,7 +10547,8 @@ void mazeColours_24d7(int param) {
   // 24fe  dd21a045  ld      ix,#45a0
   //-------------------------------
 
-  /* Colour top and bottom of house */
+  /* Colour top of house and pacman starting position */
+  /* 0x1a has the same palette as 0x10. The game uses it to indicate to GHOSTS:  "UP" movement is not allowed!. Used in ghosts AI */
   uint8_t *ix = &COLOUR[0x1a0];
   for (int b = 0; b < 6; b++) {
     //-------------------------------
@@ -10538,13 +10557,14 @@ void mazeColours_24d7(int param) {
     // 2508  dd19      add     ix,de
     // 250a  10f6      djnz    #2502           ; (-10)
     //-------------------------------
-    ix[0xc] = 0x1a;
-    ix[0x18] = 0x1a;
-    ix += 0x20;
+    ix[0xc] = 0x1a;   // top of house 
+    ix[0x18] = 0x1a;  // pacman starting position
+    ix += 0x20;       // shift one tile to the left for the next iteration
     printf("NOGO %04lx,%04lx\n", ix + 0xc - COLOUR, ix + 0x18 - COLOUR);
   }
 
   /*  Put colour marker 0x1b to outline the tunnel entrances */
+  /*  0x1a has the same palette as 0x10. */
   //-------------------------------
   // 250c  3e1b      ld      a,#1b
   // 250e  0605      ld      b,#05
@@ -10559,10 +10579,10 @@ void mazeColours_24d7(int param) {
     // 251d  dd19      add     ix,de
     // 251f  10f3      djnz    #2514           ; (-13)
     //-------------------------------
-    ix[0xe] = 0x1b;
-    ix[0xf] = 0x1b;
-    ix[0x10] = 0x1b;
-    ix += 0x20;
+    ix[0xe] = 0x1b;  // wall? above right tunnel
+    ix[0xf] = 0x1b;  // right tunnel
+    ix[0x10] = 0x1b; // wall? below right tunnel
+    ix += 0x20;  // next tile to the right
   }
 
   //-------------------------------
@@ -10578,10 +10598,10 @@ void mazeColours_24d7(int param) {
     // 2530  dd19      add     ix,de
     // 2532  10f3      djnz    #2527           ; (-13)
     //-------------------------------
-    ix[0xe] = 0x1b;
-    ix[0xf] = 0x1b;
-    ix[0x10] = 0x1b;
-    ix += 0x20;
+    ix[0xe] = 0x1b;  // wall? above left tunnel
+    ix[0xf] = 0x1b;  // left tunnel
+    ix[0x10] = 0x1b; // wall? below left tunnel
+    ix += 0x20;  // next tile to the right
   }
 
   //-------------------------------
@@ -10590,8 +10610,7 @@ void mazeColours_24d7(int param) {
   // 2539  320d46    ld      (#460d),a
   // 253c  c9        ret
   //-------------------------------
-
-  /* Colour 0x18 is ghost house door */
+  /* Colour 0x18 is different Palette. Door of the ghost house */
   COLOUR[0x1ed] = 0x18;
   COLOUR[0x20d] = 0x18;
 }
@@ -11069,6 +11088,7 @@ void configureGame_26d0(int unused) {
 //-------------------------------
 
 /*
+ * Called in the main game loop
  * AI logic for Blinky's pathfinding target.
  * This determines whether Blinky should head towards his Scatter target (top right corner) 
  * or his Chase target (Pac-Man's current tile).
@@ -11089,13 +11109,13 @@ void blinkyScatterOrChase_2730(int param) {
     // 273b  a7        and     a
     // 273c  201a      jr      nz,#2758        ; (26)
     //-------------------------------
-    if (CRUISE_ELROY_MODE_1 == 0) {
+    if (CRUISE_ELROY_MODE_1 == 0) {  // even with Scatter Cruis_Elroy will prevail. Now no Cruise_Elroy, so Blinky will go home to his Scatter target.
       //-------------------------------
       // 273e  3a044e    ld      a,(#4e04)
       // 2741  fe03      cp      #03
       // 2743  2013      jr      nz,#2758        ; (19)
       //-------------------------------
-      if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME) {
+      if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME) { // only scatter when playing the game, not during demo
         //-------------------------------
         // 2745  2a0a4d    ld      hl,(#4d0a)
         // 2748  3a2c4d    ld      a,(#4d2c)
@@ -11106,7 +11126,7 @@ void blinkyScatterOrChase_2730(int param) {
         // 2757  c9        ret
         //-------------------------------
         printf("%s BLINKY home\n", __func__);
-        XYPOS target = {0x1d, 0x22};
+        YXPOS target = {0x1d, 0x22};
         BLINKY_VECTOR2 =
             findBestOrientation_2966(BLINKY_TILE, target, &BLINKY_ORIENTATION);
         showTarget(BLINKY_TILE, target, GHOST_BLINKY);
@@ -11136,14 +11156,14 @@ void pinkyScatterOrChase_276c(int param) {
   // 276f  cb47      bit     0,a
   // 2771  c28e27    jp      nz,#278e
   //-------------------------------
-  if ((NONRANDOM_MOVEMENT & 1) == 0) {
+  if ((NONRANDOM_MOVEMENT & 1) == 0) { // Scatter-Chase test: values 0, 2, 4 & 6 are Scatter, 1, 3, 5 & 7 are Chase
     //-------------------------------
     // 2774  3a044e    ld      a,(#4e04)
     // 2777  fe03      cp      #03
     // 2779  2013      jr      nz,#278e        ; (19)
     //-------------------------------
 
-    if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME) {
+    if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME) { // only scatter when playing the game, not during demo
       //-------------------------------
       // 277b  2a0c4d    ld      hl,(#4d0c)
       // 277e  3a2d4d    ld      a,(#4d2d)
@@ -11153,7 +11173,7 @@ void pinkyScatterOrChase_276c(int param) {
       // 278a  322d4d    ld      (#4d2d),a
       // 278d  c9        ret
       //-------------------------------
-      XYPOS target = {0x1d, 0x39};
+      YXPOS target = {0x1d, 0x39};
       PINKY_VECTOR2 =
           findBestOrientation_2966(PINKY_TILE, target, &PINKY_ORIENTATION);
       showTarget(PINKY_TILE, target, GHOST_PINKY);
@@ -11161,6 +11181,7 @@ void pinkyScatterOrChase_276c(int param) {
     }
   }
 
+  // Pinky CHASE
   //-------------------------------
   // 278e  ed5b394d  ld      de,(#4d39)
   // 2792  2a1c4d    ld      hl,(#4d1c)
@@ -11172,7 +11193,7 @@ void pinkyScatterOrChase_276c(int param) {
 
   /*  Make a target tile for pinky that is 4 times pacman's current direction
    *  of travel plus pacman's current tile */
-  XYPOS target;
+  YXPOS target;
   target.x = PACMAN_VECTOR.x * 4 + PACMAN_TILE2.x;
   target.y = PACMAN_VECTOR.y * 4 + PACMAN_TILE2.y;
 
@@ -11195,13 +11216,13 @@ void inkyScatterOrChase_27a9(int param) {
   // 27ac  cb47      bit     0,a
   // 27ae  c2cb27    jp      nz,#27cb
   //-------------------------------
-  if ((NONRANDOM_MOVEMENT & 1) == 0) {
+  if ((NONRANDOM_MOVEMENT & 1) == 0) { // Scatter-Chase test: values 0, 2, 4 & 6 are Scatter, 1, 3, 5 & 7 are Chase
     //-------------------------------
     // 27b1  3a044e    ld      a,(#4e04)
     // 27b4  fe03      cp      #03
     // 27b6  2013      jr      nz,#27cb        ; (19)
     //-------------------------------
-    if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME) {
+    if (LEVEL_STATE == LEVEL_STATE_PLAY_GAME) { // only scatter when playing the game, not during demo
       //-------------------------------
       // 27b8  2a0e4d    ld      hl,(#4d0e)
       // 27bb  3a2e4d    ld      a,(#4d2e)
@@ -11211,7 +11232,7 @@ void inkyScatterOrChase_27a9(int param) {
       // 27c7  322e4d    ld      (#4d2e),a
       // 27ca  c9        ret
       //-------------------------------
-      XYPOS target = {0x40, 0x20};
+      YXPOS target = {0x40, 0x20};
       INKY_VECTOR2 =
           findBestOrientation_2966(INKY_TILE, target, &INKY_ORIENTATION);
       showTarget(INKY_TILE, target, GHOST_INKY);
@@ -11230,7 +11251,7 @@ void inkyScatterOrChase_27a9(int param) {
   /*  Inky tries to get pacman in a pincer movement with blinky so he targets
    *  a tile that is 2 tiles ahead of pacman's current vector and then twice
    *  the vector between that tile and blinky's tile */
-  XYPOS target;
+  YXPOS target;
   target.y = PACMAN_VECTOR.y * 2 + PACMAN_TILE2.y;
   target.x = PACMAN_VECTOR.x * 2 + PACMAN_TILE2.x;
 
@@ -11269,7 +11290,7 @@ void clydeScatterOrChase_27f1(int param) {
   // 27f4  cb47      bit     0,a
   // 27f6  c21328    jp      nz,#2813
   //-------------------------------
-  if ((NONRANDOM_MOVEMENT & 1) == 0) {
+  if ((NONRANDOM_MOVEMENT & 1) == 0) { // Scatter-Chase test: values 0, 2, 4 & 6 are Scatter, 1, 3, 5 & 7 are Chase
     //-------------------------------
     // 27f9  3a044e    ld      a,(#4e04)
     // 27fc  fe03      cp      #03
@@ -11287,7 +11308,7 @@ void clydeScatterOrChase_27f1(int param) {
       // 2812  c9        ret
       //-------------------------------
 
-      XYPOS target = {0x40, 0x3b};
+      YXPOS target = {0x40, 0x3b};
       CLYDE_VECTOR2 =
           findBestOrientation_2966(CLYDE_TILE, target, &CLYDE_ORIENTATION);
       showTarget(CLYDE_TILE, target, GHOST_CLYDE);
@@ -11343,7 +11364,7 @@ void homeOrRandomBlinky_283b() {
     // 2851  322c4d    ld      (#4d2c),a
     // 2854  c9        ret
     //-------------------------------
-    XYPOS target = {0x2c, 0x2e};
+    YXPOS target = {0x2c, 0x2e};
     BLINKY_VECTOR2 =
         findBestOrientation_2966(BLINKY_TILE, target, &BLINKY_ORIENTATION);
     showTarget(BLINKY_TILE, target, GHOST_BLINKY);
@@ -11377,7 +11398,7 @@ void homeOrRandomPinky_2865() {
     // 287b  322d4d    ld      (#4d2d),a
     // 287e  c9        ret
     //-------------------------------
-    XYPOS target = {0x2c, 0x2e};
+    YXPOS target = {0x2c, 0x2e};
     PINKY_VECTOR2 =
         findBestOrientation_2966(PINKY_TILE, target, &PINKY_ORIENTATION);
     showTarget(PINKY_TILE, target, GHOST_PINKY);
@@ -11412,7 +11433,7 @@ void homeOrRandomInky_288f() {
     // 28a5  322e4d    ld      (#4d2e),a
     // 28a8  c9        ret
     //-------------------------------
-    XYPOS target = {0x2c, 0x2e};
+    YXPOS target = {0x2c, 0x2e};
     INKY_VECTOR2 =
         findBestOrientation_2966(INKY_TILE, target, &INKY_ORIENTATION);
     showTarget(INKY_TILE, target, GHOST_INKY);
@@ -11447,7 +11468,7 @@ void homeOrRandomClyde_28b9() {
     // 28cf  322f4d    ld      (#4d2f),a
     // 28d2  c9        ret
     //-------------------------------
-    XYPOS target = {0x2c, 0x2e};
+    YXPOS target = {0x2c, 0x2e};
     CLYDE_VECTOR2 =
         findBestOrientation_2966(CLYDE_TILE, target, &CLYDE_ORIENTATION);
     showTarget(CLYDE_TILE, target, GHOST_CLYDE);
@@ -11508,7 +11529,7 @@ void pacmanOrientationDemo_28e3() {
   /*  Try to get away from pinky in demo mode by creating a target tile that
    *  is in the opposite direction to pinky's vector to pacman */
 
-  XYPOS target;
+  YXPOS target;
   target.y = PACMAN_TILE2.y * 2 - PINKY_TILE.y;
   target.x = PACMAN_TILE2.x * 2 - PINKY_TILE.x;
 
@@ -11532,7 +11553,7 @@ void pacmanOrientationDemo_28e3() {
   showTarget(PACMAN_TILE, target, 5);
 }
 
-XYPOS randomDirection_291e(XYPOS hl, uint8_t *orientation) {
+YXPOS randomDirection_291e(YXPOS hl, uint8_t *orientation) {
   //-------------------------------
   // 291e  223e4d    ld      (#4d3e),hl
   // 2921  ee02      xor     #02
@@ -11557,8 +11578,8 @@ XYPOS randomDirection_291e(XYPOS hl, uint8_t *orientation) {
   // 2937  dd19      add     ix,de
   // 2939  fd213e4d  ld      iy,#4d3e
   //-------------------------------
-  XYPOS *ix = &MOVE_VECTOR_DATA[BEST_ORIENTATION_FOUND];
-  XYPOS iy = CURRENT_TILE_POS;
+  YXPOS *ix = &MOVE_VECTOR_DATA[BEST_ORIENTATION_FOUND];
+  YXPOS iy = CURRENT_TILE_POS;
 
   while (1) {
     //-------------------------------
@@ -11586,7 +11607,7 @@ XYPOS randomDirection_291e(XYPOS hl, uint8_t *orientation) {
         // 2956  c9        ret
         //-------------------------------
         *orientation = BEST_ORIENTATION_FOUND;
-        return *(XYPOS *)ix;
+        return *(YXPOS *)ix;
       }
     }
     //-------------------------------
@@ -11616,7 +11637,7 @@ XYPOS randomDirection_291e(XYPOS hl, uint8_t *orientation) {
  *
  *  returns new direction vector
  */
-XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
+YXPOS findBestOrientation_2966(YXPOS hl, YXPOS de, uint8_t *a) {
   //-------------------------------
   // 2966  223e4d    ld      (#4d3e),hl
   // 2969  ed53404d  ld      (#4d40),de
@@ -11643,7 +11664,7 @@ XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
   // 2986  3600      ld      (hl),#00
   //-------------------------------
   TRIAL_ORIENTATION = 0;
-  XYPOS *ix = MOVE_VECTOR_DATA;
+  YXPOS *ix = MOVE_VECTOR_DATA;  // right, down, left, up
 
   do {
     //-------------------------------
@@ -11651,14 +11672,14 @@ XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
     // 298b  be        cp      (hl)
     // 298c  cac629    jp      z,#29c6
     //-------------------------------
-    if (OPPOSITE_ORIENTATION != TRIAL_ORIENTATION) {
+    if (OPPOSITE_ORIENTATION != TRIAL_ORIENTATION) { // not allowed to turn around, so skip this orientation
       //-------------------------------
       // 298f  cd0020    call    #2000
       // 2992  22424d    ld      (#4d42),hl
       // 2995  cd6500    call    #0065
       //-------------------------------
-      TMP_RESULT_POS = addXYOffset_2000(*ix, CURRENT_TILE_POS);
-      int offset = getScreenOffset_0065(TMP_RESULT_POS);
+      TMP_RESULT_POS = addXYOffset_2000(*ix, CURRENT_TILE_POS); // calculate new tile position
+      int offset = getScreenOffset_0065(TMP_RESULT_POS);        // get screen offset for that tile position
 
       //-------------------------------
       // 2998  7e        ld      a,(hl)
@@ -11673,7 +11694,7 @@ XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
       /*  If the trial orientation points us at a maze wall then
        *  skip it and try another orientatoin */
 
-      if ((SCREEN[offset] & CHAR_MAZE_MASK) != CHAR_MAZE_MASK) {
+      if ((SCREEN[offset] & CHAR_MAZE_MASK) != CHAR_MAZE_MASK) {  // wall test
         //-------------------------------
         // 299f  dde5      push    ix
         // 29a1  fde5      push    iy
@@ -11682,7 +11703,7 @@ XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
         // 29ab  cdea29    call    #29ea
         //-------------------------------
         printf("%s computing dist\n", __func__);
-        uint16_t dist = computeDistance_29ea(DEST_TILE_POS, TMP_RESULT_POS);
+        uint16_t dist = computeDistance_29ea(DEST_TILE_POS, TMP_RESULT_POS);  // not a wall, so compute distance to target tile
         printf("%s dist = %d\n", __func__, dist);
 
         //-------------------------------
@@ -11694,7 +11715,7 @@ XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
         // 29b7  ed52      sbc     hl,de
         // 29b9  dac629    jp      c,#29c6
         //-------------------------------
-        if (MIN_DISTANCE_FOUND >= dist) {
+        if (MIN_DISTANCE_FOUND >= dist) {  // greater or equal test, so last orientation that is closest (or equal close, right down, left, up) to target is saved
           //-------------------------------
           // 29bc  ed53444d  ld      (#4d44),de
           // 29c0  3ac74d    ld      a,(#4dc7)
@@ -11744,7 +11765,7 @@ XYPOS findBestOrientation_2966(XYPOS hl, XYPOS de, uint8_t *a) {
  *  ix, iy = input co-ords
  *  returns hl = sum of squares
  */
-uint16_t computeDistance_29ea(XYPOS ix, XYPOS iy) {
+uint16_t computeDistance_29ea(YXPOS ix, YXPOS iy) {
   //-------------------------------
   // 29ea  dd7e00    ld      a,(ix+#00)
   // 29ed  fd4600    ld      b,(iy+#00)
@@ -14777,17 +14798,16 @@ void delay_32ed(void) {
 
 /*  Table of vectors is repeated to allow a loop to count forwards 4 times
  *  from any starting orientation */
-
-//-------------------------------
-// 32ff  00ff    // RIGHT dy = 0, dx=-1
-// 3301  0100    // DOWN  dy = 1, dx=0
-// 3303  0001    // LEFT  dy = 0, dx=1
-// 3305  ff00    // UP    dy = -1, dx=0
-// 3307  00ff    // RIGHT
-// 3309  0100    // DOWN
-// 330b  0001    // LEFT
-// 330d  ff00    // UP
-//-------------------------------
+YXPOS MOVE_VECTOR_DATA[8] = {
+/* 32FF*/    { 0x00, 0xff },  // RIGHT DY =  0, DX = -1
+/* 3301*/    { 0x01, 0x00 },  // DOWN  DY =  1, DX =  0
+/* 3303*/    { 0x00, 0x01 },  // LEFT  DY =  0, DX =  1
+/* 3305*/    { 0xff, 0x00 },  // UP    DY = -1, DX =  0
+/* 3307*/    { 0x00, 0xff },  // RIGHT DY =  0, DX = -1
+/* 3309*/    { 0x01, 0x00 },  // DOWN  DY =  1, DX =  0
+/* 330b*/    { 0x00, 0x01 },  // LEFT  DY =  0, DX =  1
+/* 330d*/    { 0xff, 0x00 }   // UP    DY = -1, DX =  0
+};
 
 /*  Table of move data.  Arranged as 6 x 42 (0x2a) groups.
  *
@@ -14931,49 +14951,33 @@ const uint8_t MOVE_DATA_BLOCKS[7][42] = {
 
 /*  Maze draw data */
 
-//-------------------------------
-// 3435                 40 fc d0  d2 d2 d2 d2 d2 d2 d2 d2
-// 3440  d4 fc fc fc da
-
-// 3445                 02 dc fc  fc fc d0 d2 d2 d2 d2 d6
-// 3450  d8 d2 d2 d2 d2 d4 fc da  09
-
-// 3559                              dc fc fc fc da 02 dc
-// 3460  fc fc fc da 05 de e4 05  dc fc da 02 e6 e8 ea 02
-// 3470  e6 ea 02 dc fc fc fc da  02 dc fc fc fc da 02 e6
-// 3480  ea 02 e7 eb 02 e6 ea 02  dc fc da 02 de fc e4 02
-// 3490  de e4 02 dc fc fc fc da  02 dc fc
-
-// 349b                                    fc fc da 02 de
-// 34a0  e4 05 de e4 02 dc fc da  02 de fc e4 02 de e4 02
-// 34b0  dc fc fc fc da 02 dc fc  fc fc da 02 de f2 e8 e8
-// 34c0  ea 02 de e4 02 dc fc da  02 e7 e9 eb 02 e7 eb 02
-// 34d0  e7 d2 d2 d2 eb 02 e7 d2  d2 d2 eb 02 e7
-
-// 34dd                                          e9 e9 e9
-// 34e0  eb 02 de e4 02 dc fc da  1b de e4 02 dc fc da 02
-// 34f0  e6 e8 f8 02 f6 e8 e8 e8  e8 e8 e8 f8 02 f6 e8 e8
-// 3500  e8 ea 02 e6 f8 02 f6 e8  e8 f4 e4 02 dc fc da 02
-// 3510  de fc e4 02 f7 e9 e9 f5  f3 e9 e9 f9 02 f7 e9
-
-// 351f                                                e9
-// 3520  e9 eb 02 de e4 02 f7 e9  e9 f5 e4 02 dc fc da 02
-// 3530  de fc e4 05 de e4 0b de  e4 05 de e4 02 dc fc da
-// 3540  02 de fc e4 02 e6 ea 02  de e4 02 ec d3 d3 d3 ee
-// 3550  02 e6 ea 02 de e4 02 e6  ea 02 de e4 02 dc fc da
-// 3560  02
-
-// 3561     e7 e9 eb 02 de e4 02  e7 eb 02 dc fc fc fc da
-// 3570  02 de e4 02 e7 eb 02 de  e4 02 e7 eb 02 dc fc da
-// 3580  06 de e4 05 f0 fc fc fc  da 02 de e4 05 de e4 05
-// 3590  dc fc fa e8 e8 e8 ea 02  de f2 e8 e8 ea 02 ce fc
-// 35a0  fc fc da
-
-// 35a3           02 de f2 e8 e8  ea 02 de f2 e8 e8 ea 02
-// 35b0  dc 00
-
-// 35b2        00 00 00
-//-------------------------------
+const uint8_t MAZE_DRAW_DATA[384] = {
+/*3435*/  0x40, 0xfc, 0xd0, 0xd2, 0xd2, 0xd2, 0xd2, 0xd2, 0xd2, 0xd2, 0xd2,
+/*3440*/  0xd4, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xd0, 0xd2, 0xd2, 0xd2, 0xd2, 0xd6,
+/*3450*/  0xd8, 0xd2, 0xd2, 0xd2, 0xd2, 0xd4, 0xfc, 0xda, 0x09, 0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xdc,
+/*3460*/  0xfc, 0xfc, 0xfc, 0xda, 0x05, 0xde, 0xe4, 0x05, 0xdc, 0xfc, 0xda, 0x02, 0xe6, 0xe8, 0xea, 0x02,
+/*3470*/  0xe6, 0xea, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xe6,
+/*3480*/  0xea, 0x02, 0xe7, 0xeb, 0x02, 0xe6, 0xea, 0x02, 0xdc, 0xfc, 0xda, 0x02, 0xde, 0xfc, 0xe4, 0x02,
+/*3490*/  0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xde,
+/*34a0*/  0xe4, 0x05, 0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xda, 0x02, 0xde, 0xfc, 0xe4, 0x02, 0xde, 0xe4, 0x02,
+/*34b0*/  0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xde, 0xf2, 0xe8, 0xe8,
+/*34c0*/  0xea, 0x02, 0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xda, 0x02, 0xe7, 0xe9, 0xeb, 0x02, 0xe7, 0xeb, 0x02,
+/*34d0*/  0xe7, 0xd2, 0xd2, 0xd2, 0xeb, 0x02, 0xe7, 0xd2, 0xd2, 0xd2, 0xeb, 0x02, 0xe7, 0xe9, 0xe9, 0xe9,
+/*34e0*/  0xeb, 0x02, 0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xda, 0x1b, 0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xda, 0x02,
+/*34f0*/  0xe6, 0xe8, 0xf8, 0x02, 0xf6, 0xe8, 0xe8, 0xe8, 0xe8, 0xe8, 0xe8, 0xf8, 0x02, 0xf6, 0xe8, 0xe8,
+/*3500*/  0xe8, 0xea, 0x02, 0xe6, 0xf8, 0x02, 0xf6, 0xe8, 0xe8, 0xf4, 0xe4, 0x02, 0xdc, 0xfc, 0xda, 0x02,
+/*3510*/  0xde, 0xfc, 0xe4, 0x02, 0xf7, 0xe9, 0xe9, 0xf5, 0xf3, 0xe9, 0xe9, 0xf9, 0x02, 0xf7, 0xe9, 0xe9,
+/*3520*/  0xe9, 0xeb, 0x02, 0xde, 0xe4, 0x02, 0xf7, 0xe9, 0xe9, 0xf5, 0xe4, 0x02, 0xdc, 0xfc, 0xda, 0x02,
+/*3530*/  0xde, 0xfc, 0xe4, 0x05, 0xde, 0xe4, 0x0b, 0xde, 0xe4, 0x05, 0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xda,
+/*3540*/  0x02, 0xde, 0xfc, 0xe4, 0x02, 0xe6, 0xea, 0x02, 0xde, 0xe4, 0x02, 0xec, 0xd3, 0xd3, 0xd3, 0xee,
+/*3550*/  0x02, 0xe6, 0xea, 0x02, 0xde, 0xe4, 0x02, 0xe6, 0xea, 0x02, 0xde, 0xe4, 0x02, 0xdc, 0xfc, 0xda,
+/*3560*/  0x02, 0xe7, 0xe9, 0xeb, 0x02, 0xde, 0xe4, 0x02, 0xe7, 0xeb, 0x02, 0xdc, 0xfc, 0xfc, 0xfc, 0xda,
+/*3570*/  0x02, 0xde, 0xe4, 0x02, 0xe7, 0xeb, 0x02, 0xde, 0xe4, 0x02, 0xe7, 0xeb, 0x02, 0xdc, 0xfc, 0xda,
+/*3580*/  0x06, 0xde, 0xe4, 0x05, 0xf0, 0xfc, 0xfc, 0xfc, 0xda, 0x02, 0xde, 0xe4, 0x05, 0xde, 0xe4, 0x05,
+/*3590*/  0xdc, 0xfc, 0xfa, 0xe8, 0xe8, 0xe8, 0xea, 0x02, 0xde, 0xf2, 0xe8, 0xe8, 0xea, 0x02, 0xce, 0xfc,
+/*35a0*/  0xfc, 0xfc, 0xda, 0x02, 0xde, 0xf2, 0xe8, 0xe8, 0xea, 0x02, 0xde, 0xf2, 0xe8, 0xe8, 0xea, 0x02,
+/*35b0*/  0xdc, 0x00, 0x00, 0x00, 0x00
+};
 
 /*  Pill draw data  - 0x1e x 8 = 0xf0 entries */
 /*

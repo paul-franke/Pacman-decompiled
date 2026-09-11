@@ -226,7 +226,7 @@ static struct
 }
 targets[5];
 
-void showTarget (XYPOS a, XYPOS b, int ghost)
+void showTarget (YXPOS a, YXPOS b, int ghost)
 {
     /*  Translate tile to pixel and scale */
     targets[ghost-1].vertex[0] = (476 - a.x * 8) * frameBufferScale;

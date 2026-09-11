@@ -184,54 +184,54 @@ extern uint8_t dipSwitches;
 /*  non-ISR tasks are 2 bytes each and there are 16 entries */
 #define NONISR_TASKS (&memmap.mem[0x4cc0])
 
-#define BLINKY_POS      (*(XYPOS*)(&memmap.mem[0x4d00]))
-#define PINKY_POS       (*(XYPOS*)(&memmap.mem[0x4d02]))
-#define INKY_POS        (*(XYPOS*)(&memmap.mem[0x4d04]))
-#define CLYDE_POS       (*(XYPOS*)(&memmap.mem[0x4d06]))
-#define PACMAN_POS      (*(XYPOS*)(&memmap.mem[0x4d08]))
+#define BLINKY_POS      (*(YXPOS*)(&memmap.mem[0x4d00])) // Y=0x4d00, X=0x4d01
+#define PINKY_POS       (*(YXPOS*)(&memmap.mem[0x4d02])) // Y=0x4d02, X=0x4d03
+#define INKY_POS        (*(YXPOS*)(&memmap.mem[0x4d04])) // Y=0x4d04, X=0x4d05
+#define CLYDE_POS       (*(YXPOS*)(&memmap.mem[0x4d06])) // Y=0x4d06, X=0x4d07
+#define PACMAN_POS      (*(YXPOS*)(&memmap.mem[0x4d08])) // Y=0x4d08, X=0x4d09
 
-#define BLINKY_TILE     (*(XYPOS*)(&memmap.mem[0x4d0a]))
-#define PINKY_TILE      (*(XYPOS*)(&memmap.mem[0x4d0c]))
-#define INKY_TILE       (*(XYPOS*)(&memmap.mem[0x4d0e]))
-#define CLYDE_TILE      (*(XYPOS*)(&memmap.mem[0x4d10]))
-#define PACMAN_TILE     (*(XYPOS*)(&memmap.mem[0x4d12]))
+#define BLINKY_TILE     (*(YXPOS*)(&memmap.mem[0x4d0a])) // Y=0x4d0a, X=0x4d0b
+#define PINKY_TILE      (*(YXPOS*)(&memmap.mem[0x4d0c])) // Y=0x4d0c, X=0x4d0d
+#define INKY_TILE       (*(YXPOS*)(&memmap.mem[0x4d0e])) // Y=0x4d0e, X=0x4d0f
+#define CLYDE_TILE      (*(YXPOS*)(&memmap.mem[0x4d10])) // Y=0x4d10, X=0x4d11
+#define PACMAN_TILE     (*(YXPOS*)(&memmap.mem[0x4d12])) // Y=0x4d12, X=0x4d13
 
-#define BLINKY_VECTOR (*(XYPOS*)(&memmap.mem[0x4d14]))
-#define PINKY_VECTOR  (*(XYPOS*)(&memmap.mem[0x4d16]))
-#define INKY_VECTOR   (*(XYPOS*)(&memmap.mem[0x4d18]))
-#define CLYDE_VECTOR  (*(XYPOS*)(&memmap.mem[0x4d1a]))
-#define PACMAN_VECTOR (*(XYPOS*)(&memmap.mem[0x4d1c]))
+#define BLINKY_VECTOR (*(YXPOS*)(&memmap.mem[0x4d14])) // Y=0x4d14, X=0x4d15
+#define PINKY_VECTOR  (*(YXPOS*)(&memmap.mem[0x4d16])) // Y=0x4d16, X=0x4d17
+#define INKY_VECTOR   (*(YXPOS*)(&memmap.mem[0x4d18])) // Y=0x4d18, X=0x4d19
+#define CLYDE_VECTOR  (*(YXPOS*)(&memmap.mem[0x4d1a])) // Y=0x4d1a, X=0x4d1b
+#define PACMAN_VECTOR (*(YXPOS*)(&memmap.mem[0x4d1c])) // Y=0x4d1c, X=0x4d1d
 
-#define BLINKY_VECTOR2 (*(XYPOS*)(&memmap.mem[0x4d1e]))
-#define PINKY_VECTOR2  (*(XYPOS*)(&memmap.mem[0x4d20]))
-#define INKY_VECTOR2   (*(XYPOS*)(&memmap.mem[0x4d22]))
-#define CLYDE_VECTOR2  (*(XYPOS*)(&memmap.mem[0x4d24]))
-#define PACMAN_VECTOR2 (*(XYPOS*)(&memmap.mem[0x4d26]))
+#define BLINKY_VECTOR2 (*(YXPOS*)(&memmap.mem[0x4d1e]))// Y=0x4d1e, X=0x4d1f
+#define PINKY_VECTOR2  (*(YXPOS*)(&memmap.mem[0x4d20]))// Y=0x4d20, X=0x4d21
+#define INKY_VECTOR2   (*(YXPOS*)(&memmap.mem[0x4d22]))// Y=0x4d22, X=0x4d23
+#define CLYDE_VECTOR2  (*(YXPOS*)(&memmap.mem[0x4d24]))// Y=0x4d24, X=0x4d25
+#define PACMAN_VECTOR2 (*(YXPOS*)(&memmap.mem[0x4d26]))// Y=0x4d26, X=0x4d27
 
-#define BLINKY_PREV_ORIENTATION memmap.mem[0x4d28]
-#define PINKY_PREV_ORIENTATION  memmap.mem[0x4d29]
-#define INKY_PREV_ORIENTATION   memmap.mem[0x4d2a]
-#define CLYDE_PREV_ORIENTATION  memmap.mem[0x4d2b]
+#define BLINKY_PREV_ORIENTATION memmap.mem[0x4d28] // 0=up, 1=left, 2=down, 3=right
+#define PINKY_PREV_ORIENTATION  memmap.mem[0x4d29] // 0=up, 1=left, 2=down, 3=right
+#define INKY_PREV_ORIENTATION   memmap.mem[0x4d2a] // 0=up, 1=left, 2=down, 3=right
+#define CLYDE_PREV_ORIENTATION  memmap.mem[0x4d2b] // 0=up, 1=left, 2=down, 3=right
 
-#define BLINKY_ORIENTATION memmap.mem[0x4d2c]
-#define PINKY_ORIENTATION  memmap.mem[0x4d2d]
-#define INKY_ORIENTATION   memmap.mem[0x4d2e]
-#define CLYDE_ORIENTATION  memmap.mem[0x4d2f]
+#define BLINKY_ORIENTATION memmap.mem[0x4d2c] // 0=up, 1=left, 2=down, 3=right
+#define PINKY_ORIENTATION  memmap.mem[0x4d2d] // 0=up, 1=left, 2=down, 3=right
+#define INKY_ORIENTATION   memmap.mem[0x4d2e] // 0=up, 1=left, 2=down, 3=right
+#define CLYDE_ORIENTATION  memmap.mem[0x4d2f] // 0=up, 1=left, 2=down, 3=right
 
-#define PACMAN_ORIENTATION  memmap.mem[0x4d30]
+#define PACMAN_ORIENTATION  memmap.mem[0x4d30] // 0=up, 1=left, 2=down, 3=right
 
-#define BLINKY_TILE2 (*(XYPOS*)(&memmap.mem[0x4d31]))
-#define PINKY_TILE2  (*(XYPOS*)(&memmap.mem[0x4d33]))
-#define INKY_TILE2   (*(XYPOS*)(&memmap.mem[0x4d35]))
-#define CLYDE_TILE2  (*(XYPOS*)(&memmap.mem[0x4d37]))
-#define PACMAN_TILE2 (*(XYPOS*)(&memmap.mem[0x4d39]))
+#define BLINKY_TILE2 (*(YXPOS*)(&memmap.mem[0x4d31])) // next tile in pathfinding
+#define PINKY_TILE2  (*(YXPOS*)(&memmap.mem[0x4d33])) // next tile in pathfinding
+#define INKY_TILE2   (*(YXPOS*)(&memmap.mem[0x4d35])) // next tile in pathfinding
+#define CLYDE_TILE2  (*(YXPOS*)(&memmap.mem[0x4d37])) // next tile in pathfinding    
+#define PACMAN_TILE2 (*(YXPOS*)(&memmap.mem[0x4d39])) // next tile using input
 
 #define BEST_ORIENTATION_FOUND memmap.mem[0x4d3b]
 #define PACMAN_DESIRED_ORIENTATION      memmap.mem[0x4d3c]
 #define OPPOSITE_ORIENTATION memmap.mem[0x4d3d]
-#define CURRENT_TILE_POS (*(XYPOS*)(&memmap.mem[0x4d3e]))
-#define DEST_TILE_POS (*(XYPOS*)(&memmap.mem[0x4d40]))
-#define TMP_RESULT_POS (*(XYPOS*)(&memmap.mem[0x4d42]))
+#define CURRENT_TILE_POS (*(YXPOS*)(&memmap.mem[0x4d3e]))
+#define DEST_TILE_POS (*(YXPOS*)(&memmap.mem[0x4d40]))
+#define TMP_RESULT_POS (*(YXPOS*)(&memmap.mem[0x4d42]))
 #define MIN_DISTANCE_FOUND              (*(uint16_t*)&memmap.mem[0x4d44])
 #define PACMAN_MOVE_PAT_NORMAL          (*(uint32_t*)&memmap.mem[0x4d46])
 #define PACMAN_MOVE_PAT_POWERUP         (*(uint32_t*)&memmap.mem[0x4d4a])
@@ -310,7 +310,7 @@ extern uint8_t dipSwitches;
 #define PILL_CHANGE_COUNTER             memmap.mem[0x4dcf]
 #define KILLED_COUNT                    memmap.mem[0x4dd0]
 #define KILLED_STATE                    memmap.mem[0x4dd1]
-#define FRUIT_POS                       (*(XYPOS *)(&memmap.mem[0x4dd2]))
+#define FRUIT_POS                       (*(YXPOS *)(&memmap.mem[0x4dd2]))
 
 #define FRUIT_POINTS                    memmap.mem[0x4dd4]
 #define WAIT_START_BUTTON               memmap.mem[0x4dd6]
@@ -447,6 +447,6 @@ static inline void assert (bool cond, char *file, int line)
 #define ASSERT(cond) assert(cond,__FILE__,__LINE__)
 
 #include "structs.h"
-extern void showTarget (XYPOS a, XYPOS b, int col);
+extern void showTarget (YXPOS a, YXPOS b, int col);
 
 #endif

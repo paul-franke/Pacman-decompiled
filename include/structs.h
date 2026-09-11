@@ -9,7 +9,7 @@ typedef struct // union
     uint8_t y; // l
     uint8_t x; // h
 }
-XYPOS;
+YXPOS;
 
 typedef struct
 {
