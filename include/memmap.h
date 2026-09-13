@@ -150,18 +150,18 @@ extern uint8_t dipSwitches;
 /* 0=alternate 1=normal */
 #define DIP_SWITCH_NAMES        ((DIP_INPUT & 0x80) >> 7)
 
-#define BLINKY_SPRITE           memmap.mem[0x4c02]
-#define BLINKY_COLOUR           memmap.mem[0x4c03]
-#define PINKY_SPRITE            memmap.mem[0x4c04]
-#define PINKY_COLOUR            memmap.mem[0x4c05]
-#define INKY_SPRITE             memmap.mem[0x4c06]
-#define INKY_COLOUR             memmap.mem[0x4c07]
-#define CLYDE_SPRITE            memmap.mem[0x4c08]
-#define CLYDE_COLOUR            memmap.mem[0x4c09]
-#define PACMAN_SPRITE           memmap.mem[0x4c0a]
-#define PACMAN_COLOUR           memmap.mem[0x4c0b]
-#define FRUIT_SPRITE            memmap.mem[0x4c0c]
-#define FRUIT_COLOUR            memmap.mem[0x4c0d]
+#define BLINKY_SPRITE           memmap.mem[0x4c02] // bit 7-2: Sprite, bit 1: flipX, bit 0: flipY
+#define BLINKY_COLOUR           memmap.mem[0x4c03] // bit 7-5: unused, bit 4: flash, bit 3-0: colour
+#define PINKY_SPRITE            memmap.mem[0x4c04] // bit 7-2: Sprite, bit 1: flipX, bit 0: flipY
+#define PINKY_COLOUR            memmap.mem[0x4c05] // bit 7-5: unused, bit 4: flash, bit 3-0: colour
+#define INKY_SPRITE             memmap.mem[0x4c06] // bit 7-2: Sprite, bit 1: flipX, bit 0: flipY
+#define INKY_COLOUR             memmap.mem[0x4c07] // bit 7-5: unused, bit 4: flash, bit 3-0: colour
+#define CLYDE_SPRITE            memmap.mem[0x4c08] // bit 7-2: Sprite, bit 1: flipX, bit 0: flipY
+#define CLYDE_COLOUR            memmap.mem[0x4c09] // bit 7-5: unused, bit 4: flash, bit 3-0: colour
+#define PACMAN_SPRITE           memmap.mem[0x4c0a] // bit 7-2: Sprite, bit 1: flipX, bit 0: flipY
+#define PACMAN_COLOUR           memmap.mem[0x4c0b] // bit 7-5: unused, bit 4: flash, bit 3-0: colour
+#define FRUIT_SPRITE            memmap.mem[0x4c0c] // bit 7-2: Sprite, bit 1: flipX, bit 0: flipY
+#define FRUIT_COLOUR            memmap.mem[0x4c0d] // bit 7-5: unused, bit 4: flash, bit 3-0: colour
 
 #define SPRITE_POS              ((uint8_t *)&memmap.mem[0x4c22])
 #define SPRITE_DATA             ((uint8_t *)&memmap.mem[0x4c32])

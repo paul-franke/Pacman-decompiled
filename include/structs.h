@@ -19,6 +19,12 @@ typedef struct
 }
 TASK;
 
+typedef struct {
+  uint8_t sprite;
+  uint8_t colour;
+  uint8_t points;
+} FruitData;
+
 typedef struct
 {
     uint8_t mask;

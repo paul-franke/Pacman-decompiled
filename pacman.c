@@ -4427,28 +4427,24 @@ void selectFruit_0ead(void) {
   // 0ee8  87        add     a,a
   // 0ee9  80        add     a,b
   //-------------------------------
-  a *= 3;
-
   //-------------------------------
   // 0eea  d7        rst     #10
   // 0eeb  320c4c    ld      (#4c0c),a
   //-------------------------------
-  uint8_t *hl = FRUIT_DATA_0efd;
-  FRUIT_SPRITE = fetchOffset_0010(&hl, a);
-
+  FRUIT_SPRITE = FRUIT_DATA_0efd[a].sprite;
   //-------------------------------
   // 0eee  23        inc     hl
   // 0eef  7e        ld      a,(hl)
   // 0ef0  320d4c    ld      (#4c0d),a
   //-------------------------------
-  FRUIT_COLOUR = hl[1];
+  FRUIT_COLOUR = FRUIT_DATA_0efd[a].colour;
 
   //-------------------------------
   // 0ef3  23        inc     hl
   // 0ef4  7e        ld      a,(hl)
   // 0ef5  32d44d    ld      (#4dd4),a
-  //-------------------------------
-  FRUIT_POINTS = hl[2];
+  //-------------------------------  
+  FRUIT_POINTS = FRUIT_DATA_0efd[a].points;
 
   //-------------------------------
   // 0ef8  f7        rst     #30
@@ -4469,20 +4465,31 @@ void selectFruit_0ead(void) {
   //-------------------------------
 }
 
-/*  
- *Fruit data.  3 byte sets contains sprite, colour and points 
- * data is read by selectFruit_0ead():
- * hl = hl * P1_LEVEL
- * FRUIT_SPRITE = hl[0];            // Gets [Sprite ID]
- * FRUIT_COLOUR = hl[1];            // Gets [Color Palette]
- * FRUIT_POINTS = hl[2];            // Gets [Point Value ID]
-*/
-//-------------------------------
-// 0efd                                          00 14 06
-// 0f00  01 0f 07 02 15 08 02 15  08 04 14 09 04 14 09 05
-// 0f10  17 0a 05 17 0a 06 09 0b  06 09 0b 03 16 0c 03 16
-// 0f20  0c 07 16 0d 07 16 0d 07  16 0d 07 16 0d 07 16 0d
-// 0f30  07 16 0d 07 16 0d 07 16  0d 07 16 0d 00 00 00 00
+const FruitData FRUIT_DATA_0efd[] = {
+/*0efd*/  { 0x00, 0x14, 0x06 }, // Level 0 (not used)
+/*0f00*/  { 0x01, 0x0f, 0x07 }, // Level 1  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f03*/  { 0x02, 0x15, 0x08 }, // Level 2  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f06*/  { 0x02, 0x15, 0x08 }, // Level 3  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f09*/  { 0x04, 0x14, 0x09 }, // Level 4  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f0c*/  { 0x04, 0x14, 0x09 }, // Level 5  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f0f*/  { 0x05, 0x17, 0x0a }, // Level 6  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f12*/  { 0x05, 0x17, 0x0a }, // Level 7  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f15*/  { 0x06, 0x09, 0x0b }, // Level 8  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f18*/  { 0x06, 0x09, 0x0b }, // Level 9  FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f1b*/  { 0x03, 0x16, 0x0c }, // Level 10 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f1e*/  { 0x03, 0x16, 0x0c }, // Level 11 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f21*/  { 0x07, 0x16, 0x0d }, // Level 12 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f24*/  { 0x07, 0x16, 0x0d }, // Level 13 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f27*/  { 0x07, 0x16, 0x0d }, // Level 14 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f2a*/  { 0x07, 0x16, 0x0d }, // Level 15 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f2d*/  { 0x07, 0x16, 0x0d }, // Level 16 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f30*/  { 0x07, 0x16, 0x0d }, // Level 17 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f33*/  { 0x07, 0x16, 0x0d }, // Level 18 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f36*/  { 0x07, 0x16, 0x0d }, // Level 19 FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+/*0f39*/  { 0x07, 0x16, 0x0d }, // Level 20+FRUIT_SPRITE, FRUIT_COLOUR, FRUIT_POINTS
+};
+
+// 0f3c                                       00 00 00 00
 // 0f40  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 // 0f50  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 // 0f60  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
@@ -4496,7 +4503,7 @@ void selectFruit_0ead(void) {
 // 0fe0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 // 0ff0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 48 36
 //-------------------------------
-
+                                   
 void resetFruit_1000(void) {
   //-------------------------------
   // 1000  af        xor     a
