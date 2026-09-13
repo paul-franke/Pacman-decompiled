@@ -11091,7 +11091,15 @@ void configureGame_26d0(int unused) {
 /*  Difficulty data ptr 0x0068 or 0x007d */
 
 //-------------------------------
-// 2728  10 15 20 ff 68 00 7d 00
+const uint8_t BONUS_LIFE_DATA[] = { 
+/*2728*/  0x10, 
+/*2729*/  0x15, 
+/*272a*/  0x20, 
+/*272b*/  0xff };
+
+const uint16_t DIFFICULTY_DATA[] = { 
+/*272c*/  0x0068, 
+/*272e*/ 0x007d };
 //-------------------------------
 
 /*
