@@ -12699,8 +12699,9 @@ void func_2c44(uint8_t a) {
   bcdAdjust(&a);
 }
 
-/* draw messages from a table
- * coordinates and message data
+/* 
+ * draw messages from a table.
+ * See line 15093 for tables and documentation.
  *  b = message # in table
  */
 void displayMsg_2c5e(int msg) {
@@ -12711,14 +12712,18 @@ void displayMsg_2c5e(int msg) {
   // 2c63  23        inc     hl
   // 2c64  56        ld      d,(hl)
   //-------------------------------
-  uint16_t msgDataAddr = tableLookup_0018(DATA_MSG_TABLE_36a5, msg);
-  int16_t screenLoc = *(int16_t *)(&ROM[msgDataAddr]);
-  uint8_t *chr = &ROM[msgDataAddr + 1];
+  int tableIndex = msg & 0x7F;
+  if (tableIndex >= sizeof(msgTable_36a5)/sizeof(msgTable_36a5[0])) return;
+  const uint8_t *msgData = msgTable_36a5[tableIndex];
+  if (msgData == msg_EMPTY) return;
+  int16_t screenLoc = msgData[0] | (msgData[1] << 8);
+  const uint8_t *chr = &msgData[1];
   // printf ("%s msg = %02x -> %x -> %x \n", __func__, b, hl, de);
-
+ 
   /* TODO if the msg starts with 0xd4, 0x83, then what prevents the video
    * address from being c7d4 ???? Maybe the address bus is only 15 bits? */
-  screenLoc &= 0x7fff;
+
+  screenLoc &= 0x7fff;  // remove the eight bit from byte 1.
 
   //-------------------------------
   // 2c65  dd210044  ld      ix,#4400	; Start of Color RAM
@@ -12728,9 +12733,9 @@ void displayMsg_2c5e(int msg) {
 
   //-------------------------------
   // 2c6b  dde5      push    ix		; 4400 + (hl) -> stack
-  // 2c6d  1100fc    ld      de,#fc00
+  // 2c6d  1100fc    ld      de,#fc00 ; two complements: -0x0400
   // 2c70  dd19      add     ix,de	; Calculate starting pos in VRAM
-  // 2c72  11ffff    ld      de,#ffff	; Offset for normal text
+  // 2c72  11ffff    ld      de,#ffff	; Offset for top + bottom 2 lines
   //-------------------------------
   uint8_t *video = &SCREEN[screenLoc];
   int posDelta = -1;
@@ -12741,36 +12746,35 @@ void displayMsg_2c5e(int msg) {
   //-------------------------------
   if ((*chr & 0x80) == 0) {
     //-------------------------------
-    // 2c79  11e0ff    ld      de,#ffe0	; Offset for top + bottom 2 lines
+    // 2c79  11e0ff    ld      de,#ffe0	; Offset for normal text
     //-------------------------------
     posDelta = -0x20;
   }
 
   //-------------------------------
   // 2c7c  23        inc     hl
-  // 2c7d  78        ld      a,b		; b -> a
+  // 2c7d  78        ld      a,b		  ; b -> a
   // 2c7e  010000    ld      bc,#0000	; 0 -> b,c
-  // 2c81  87        add     a,a		; 2*a -> a
-  // 2c82  3828      jr      c,#2cac         ; Special Draw routine for entries
-  // 80+
+  // 2c81  87        add     a,a		  ; 2*a -> a + carry if > 0x80
+  // 2c82  3828      jr      c,#2cac  ; Erase routine for entries 80+
+  // 
   //-------------------------------
   chr++;
   uint16_t byteCount = 0;
-  if (msg < 0x80) {
+  if (msg < 0x80) { // write mode
     //-------------------------------
     // 2c84  7e        ld      a,(hl)		; Read next char
-    // 2c85  fe2f      cp      #2f		; #2f = end of text
-    // 2c87  2809      jr      z,#2c92         ; Done with VRAM
+    // 2c85  fe2f      cp      #2f		  ; #2f = end of text
+    // 2c87  2809      jr      z,#2c92  ; Done with VRAM
     //-------------------------------
     while (*chr != 0x2f) {
       //-------------------------------
       // 2c89  dd7700    ld      (ix+#00),a	; Write char to screen
-      // 2c8c  23        inc     hl		; Next char
-      // 2c8d  dd19      add     ix,de		; Calc next VRAM pos
-      // 2c8f  04        inc     b		; Inc char count
+      // 2c8c  23        inc     hl		      ; Next char
+      // 2c8d  dd19      add     ix,de		  ; Calc next VRAM pos
+      // 2c8f  04        inc     b		      ; Inc char count
       //-------------------------------
-      // printf ("%s normal %04lx => [%04lx]='%c', move %d\n", __func__,
-      //         chr-MEM, video-MEM, *chr, de);
+
       *video = *chr++;
       video += posDelta;
       byteCount++;
@@ -12785,20 +12789,23 @@ void displayMsg_2c5e(int msg) {
     //-------------------------------
     chr++;
 
-  jump_2c93:
+  jump_ApplyColor:
+    /* apply the color*/
     //-------------------------------
-    // 2c93  dde1      pop     ix		; Get CRAM start pos
+    // 2c93  dde1      pop     ix		    ; Get CRAM start pos
     // 2c95  7e        ld      a,(hl)		; Get color
-    // 2c96  a7        and     a
-    // 2c97  faa42c    jp      m,#2ca4		; Jump if > #80
+    // 2c96  a7        and     a        ; test 8th bit, preserve contents.
+    //                                  ; high bits are ignored by palette.
+    // 2c97  faa42c    jp      m,#2ca4	; Jump if > #80
     //-------------------------------
-    if (*chr < 0x80) {
+    if (*chr < 0x80) {  
+      /* all different colors*/
       while (byteCount--) {
         //-------------------------------
-        // 2c9a  7e        ld      a,(hl)		; Get color
+        // 2c9a  7e        ld      a,(hl)	  	; Get color
         // 2c9b  dd7700    ld      (ix+#00),a	; Drop in CRAM
-        // 2c9e  23        inc     hl		; Next color
-        // 2c9f  dd19      add     ix,de		; Calc next CRAM pos
+        // 2c9e  23        inc     hl		      ; Next color
+        // 2c9f  dd19      add     ix,de		  ; Calc next CRAM pos
         //-------------------------------
         // printf ("%s multi-colour [%04lx] => [%04lx]=%02x, move %d\n",
         // __func__,
@@ -12807,7 +12814,7 @@ void displayMsg_2c5e(int msg) {
         colour += posDelta;
 
         //-------------------------------
-        // 2ca1  10f7      djnz    #2c9a           ; Loop until b = 0
+        // 2ca1  10f7      djnz    #2c9a     ; b--, Loop until b = 0
         // 2ca3  c9        ret
         //-------------------------------
       }
@@ -12817,9 +12824,9 @@ void displayMsg_2c5e(int msg) {
       // 	;; Same as above, but all the same color
       while (byteCount--) {
         //-------------------------------
-        // 2ca4  dd7700    ld      (ix+#00),a	; Drop in CRAM
-        // 2ca7  dd19      add     ix,de		; Calc next CRAM pos
-        // 2ca9  10f9      djnz    #2ca4           ; Loop until b = 0
+        // 2ca4  dd7700    ld      (ix+#00),a	  ; Drop in CRAM
+        // 2ca7  dd19      add     ix,de		    ; Calc next CRAM pos
+        // 2ca9  10f9      djnz    #2ca4      ; Loop until b = 0
         // 2cab  c9        ret
         //-------------------------------
         // printf ("%s single-colour [%04lx] => [%04lx]=%02x, move %d\n",
@@ -12830,19 +12837,20 @@ void displayMsg_2c5e(int msg) {
 
       return;
     }
-  } else {
+  } else {  
+    //erase mode
     //-------------------------------
     // 	;; Message # > 80 (erase previous message), use 2nd color code
-    // 2cac  7e        ld      a,(hl)		; Read next char
+    // 2cac  7e        ld      a,(hl)		       ; Read next char
     // 2cad  fe2f      cp      #2f
     // 2caf  280a      jr      z,#2cbb         ; Done with VRAM
     //-------------------------------
     while (*chr != 0x2f) {
       //-------------------------------
       // 2cb1  dd360040  ld      (ix+#00),#40	; Write 40 to VRAM?
-      // 2cb5  23        inc     hl		; Next char
-      // 2cb6  dd19      add     ix,de		; Next screen pos
-      // 2cb8  04        inc     b		; Inc char count
+      // 2cb5  23        inc     hl		        ; Next char
+      // 2cb6  dd19      add     ix,de		    ; Next screen pos
+      // 2cb8  04        inc     b		        ; Inc char count
       //-------------------------------
       // printf ("%s blank [%04lx]=0x40, move %d\n", __func__, video-MEM, de);
       *video = 0x40;
@@ -12858,24 +12866,22 @@ void displayMsg_2c5e(int msg) {
     //-------------------------------
     // 2cbb  23        inc     hl		; Next char
     // 2cbc  04        inc     b		; Inc char count
-    // 2cbd  edb1      cpir			; Loop until [hl] = 2f
+    //                              ; bc is decremented by the cpir loop.
+    //                              ; There are always less than 256 bytes, so only 
+    //                              ; iteration decrements b by 1, which is already
+    //                              ; compensated for on address 0x2cbc
+    // 2cbd  edb1      cpir			    ; Loop until [hl] = 2f
     //-------------------------------
     chr++;
-    byteCount++;
-    while (*chr != 0x2f && byteCount > 0) {
-      // printf ("%s skip [%04lX] count=%d\n", __func__, chr-MEM, bc);
+    while (*chr != 0x2f) { 
+      //skip the draw mode colors
       chr++;
-      byteCount--;
     }
-
-    /*  The CPIR opcode finishes with hl one byte beyond the found char so
-     *  inc chr to emulate */
     chr++;
-
     //-------------------------------
     // 2cbf  18d2      jr      #2c93           ; Do CRAM
     //-------------------------------
-    goto jump_2c93;
+    goto jump_ApplyColor;  // apply the erase color/original color
   }
 }
 
@@ -15025,482 +15031,574 @@ const uint8_t PILLS_DELTA_ADDRESS_ENCODING[240] = {
 /*36a0*/  0x01, 0x04, 0x01, 0x01, 0x01
 };
 
+
 // 	;; Indirect Lookup table for 2c5e routine  (0x48 entries)
 //-------------------------------
-// 36a5  1337			; 0         HIGH SCORE
-// 36a7  2337			; 1	    CREDIT
-// 36a9  3237			; 2	    FREE PLAY
-// 36ab  4137			; 3         PLAYER ONE
-// 36ad  5a37			; 4         PLAYER TWO
-// 36af  6a37			; 5         GAME  OVER
-// 36b1  7a37			; 6         READY?
-// 36b3  8637			; 7	    PUSH START BUTTON
-// 36b5  9d37			; 8         1 PLAYER ONLY
-// 36b7  b137			; 9         1 OR 2 PLAYERS
-// 36b9  003d			; a  c837   BONUS PAC-MAN FOR   000 Pts
-// 36bb  213d			; b  e937   @ 1980 MIDWAY MFG.CO.
-// 36bd  fd37			; c         CHARACTER / NICKNAME
-// 36bf  673d			; d  1738   "BLINKY"
-// 36c1  e33d			; e  2538   "BBBBBBBB"
-// 36c3  863d			; f  3238   "PINKY"
-// 36c5  023e			; 10 3f38   "DDDDDDDD"
-// 36c7  4c38			; 11        . 10 Pts
-// 36c9  5a38			; 12        o 50 Pts
-// 36cb  3c3d			; 13 6838   @ 1980 MIDWAY MFG.CO.
-// 36cd  573d			; 14 7538   -SHADOW
-// 36cf  d33d			; 15 8638   "AAAAAAAA"
-// 36d1  763d			; 16 9838   -SPEEDY
-// 36d3  f23d			; 17 aa38   "CCCCCCCC"
-// 36d5  0100			; 18
-// 36d7  0200			; 19
-// 36d9  0300			; 1a
-// 36db  bc38			; 1b ce38    100
-// 36dd  c438			; 1c d838    300
-// 36df  ce38			; 1d e238    500
-// 36e1  d838			; 1e ec38    700
-// 36e3  e238			; 1f f638    1000
-// 36e5  ec38			; 20 0039    2000
-// 36e7  f638			; 21 0039    3000
-// 36e9  0039			; 22 0039    5000
-// 36eb  0a39                       ; 23         MEMORY  OK
-// 36ed  1a39			; 24         BAD    R M
-// 36ef  6f39			; 25         FREE  PLAY
-// 36f1  2a39                       ; 26         1 COIN  1 CREDIT
-// 36f3  5839			; 27         1 COIN  2 CREDITS
-// 36f5  4139			; 28         2 COINS 1 CREDIT
-// 36f7  4f3e			; 29 a339    PAC-MAN
-// 36f8  8639			; 2a	     BONUS  NONE
-// 36fb  9739			; 2b         BONUS
-// 36fd  b039			; 2c         TABLE
-// 36ff  bd39			; 2d         UPRIGHT
-// 3701  ca39			; 2e	     000
-// 3703  a53d			; 2f d339    "INKY"
-// 3705  213e			; 30 e139    "FFFFFFFF"
-// 3707  c43d			; 31 ee39    "CLYDE"
-// 3709  403e			; 32 fc39    "HHHHHHHH"
-// 370b  953d			; 33 093a    -BASHFUL
-// 370d  113e			; 34 1a3a    "EEEEEEEE"
-// 3711  b43d			; 35 2c3a    -POKEY
-// 3711  303e			; 36 3d3a    "GGGGGGGG"
+const uint8_t* msgTable_36a5[] = {
+/*36a5 1337*/ msg_3713, // 			; 0     HIGH SCORE
+/*36a7 2337*/ msg_3723, // 			; 1	    CREDIT
+/*36a9 3237*/ msg_3732, // 			; 2	    FREE PLAY
+/*36ab 4137*/ msg_3741, // 			; 3     PLAYER ONE
+/*36ad 5a37*/ msg_375a, // 			; 4     PLAYER TWO
+/*36af 6a37*/ msg_376a, // 			; 5     GAME  OVER
+/*36b1 7a37*/ msg_377a, //			; 6     READY?
+/*36b3 8637*/ msg_3786, // 			; 7	    PUSH START BUTTON
+/*36b5 9d37*/ msg_379d, // 			; 8     1 PLAYER ONLY
+/*36b7 b137*/ msg_37b1, // 			; 9     1 OR 2 PLAYERS
+/*36b9 003d*/ msg_3d00, // 			; a     BONUS PAC-MAN FOR   000 Pts
+/*36bb 213d*/ msg_3d21, // 			; b     @ 1980 MIDWAY MFG.CO.
+/*36bd fd37*/ msg_37fd, // 			; c     CHARACTER / NICKNAME
+/*36bf 673d*/ msg_3d67, // 			; d     "BLINKY"
+/*36c1 e33d*/ msg_3de3, // 			; e     "BBBBBBBB"
+/*36c3 863d*/ msg_3d86, // 			; f     "PINKY"
+/*36c5 023e*/ msg_3e02, // 			; 10    "DDDDDDDD"
+/*36c7 4c38*/ msg_384c, // 			; 11    . 10 Pts
+/*36c9 5a38*/ msg_385a, // 			; 12    o 50 Pts
+/*36cb 3c3d*/ msg_3d3c, // 			; 13    @ 1980 MIDWAY MFG.CO.
+/*36cd 573d*/ msg_3d57, // 			; 14    -SHADOW
+/*36cf d33d*/ msg_3dd3, // 			; 15    "AAAAAAAA"
+/*36d1 763d*/ msg_3d76, // 			; 16    -SPEEDY
+/*36d3 f23d*/ msg_3df2, // 			; 17    "CCCCCCCC"
+/*36d5 0100*/ msg_EMPTY, // 		; 18    ----
+/*36d7 0200*/ msg_EMPTY, // 		; 19    ----
+/*36d9 0300*/ msg_EMPTY, // 		; 1a    ----
+/*36db bc38*/ msg_38bc, // 			; 1b    100
+/*36dd c438*/ msg_38c4, // 			; 1c    300
+/*36df ce38*/ msg_38ce, // 			; 1d    500
+/*36e1 d838*/ msg_38d8, // 			; 1e    700
+/*36e3 e238*/ msg_38e2, // 			; 1f    1000
+/*36e5 ec38*/ msg_38ec, // 			; 20    2000
+/*36e7 f638*/ msg_38f6, // 			; 21    3000
+/*36e9 0039*/ msg_3900, // 			; 22    5000
+/*36eb 0a39*/ msg_390a, //      ; 23    MEMORY  OK
+/*36ed 1a39*/ msg_391a, // 			; 24    BAD    R M
+/*36ef 6f39*/ msg_396f, // 			; 25    FREE  PLAY
+/*36f1 2a39*/ msg_392a, //      ; 26    1 COIN  1 CREDIT
+/*36f3 5839*/ msg_3958, // 			; 27    1 COIN  2 CREDITS
+/*36f5 4139*/ msg_3941, // 			; 28    2 COINS 1 CREDIT
+/*36f7 4f3e*/ msg_3e4f, // 			; 29    PAC-MAN
+/*36f8 8639*/ msg_3986, // 			; 2a    BONUS  NONE
+/*36fb 9739*/ msg_3997, // 			; 2b    BONUS
+/*36fd b039*/ msg_39b0, // 			; 2c    TABLE
+/*36ff bd39*/ msg_39bd, // 			; 2d    UPRIGHT
+/*3701 ca39*/ msg_39ca, // 			; 2e    000
+/*3703 a53d*/ msg_3da5, // 			; 2f    "INKY"
+/*3705 213e*/ msg_3e21, // 			; 30    "FFFFFFFF"
+/*3707 c43d*/ msg_3dc4, // 			; 31    "CLYDE"
+/*3709 403e*/ msg_3e40, // 			; 32    "HHHHHHHH"
+/*370b 953d*/ msg_3d95, // 			; 33    -BASHFUL
+/*370d 113e*/ msg_3e11, // 			; 34    "EEEEEEEE"
+/*3711 b43d*/ msg_3db4, // 			; 35    -POKEY
+/*3711 303e*/ msg_3e30, // 			; 36    "GGGGGGGG"
+};
 //-------------------------------
 
-/*  Each msg is the same format.  The message number is or'd with #80 to
- *  indicate the message is to be erased.  With n being the length of the msg:
+/* 
+ *  Each msg usage the same format.  
+ *                   
+ *  msg#:         message number. or'd with #80 to
+ *                indicate the message is to be erased.
+ *                
+ *  n:            length of the msg:
  *
- *  byte 0..1  : Address on the screen the message should be printed.  Or'd
- *              with #8000 means msg is on top or bottom 2 lines of screen.
+ *  byte 0..1    : Address on the screen the message should be printed. if
+ *                 byte 1 is > 0x80 then use for video and color addresses: 
+ *                 ==>For top 2 and bottom 2 rows. 
+ *                      next position to the right is: address=addres-1-1. 
+ *                 ==> For other rows use: 
+ *                      next position to the right is: address=address-20. 
  *  bytes 2..n+1 : The text of the msg itself
- *  byte  n+2    : 0x2f - end of text
- *  byte  n+3    : 1st colour.  First byte or'd with #80 means all the text is
- * the same colour (single byte), otherwise it is a string of colours the same
- * length as the message. byte  n+4    : 0x2f - end of 1st colour info byte  n+5
- * : 2nd colour.  Used when erasing a msg.  Again, if first byte is or'd with
- * #80 then it is a single byte, otherwise it is a string. */
+ *  byte  n+2    : delimiter
+ *  byte  n+3    : Write color:  First byte or'd with #80 means all the text is
+ *                 the same colour (single byte), otherwise it is a string of colours the same
+ *                 length as the message. 
+ *  byte  n+4    : delimiter 
+ *  byte  n+5    : Erase color.  Used when erasing a msg.  Again, if first byte is or'd with
+ *                 #80 then it is a single byte, otherwise it is a string. 
+ */
+const uint8_t msg_EMPTY[] = { //36a5 not present in original proms now mapped to messages 18, 19 & 1a 
+  0x00, 0x00, // Screen location
+  0x2F,  // delimiter
+  0x80,  // single color draw mode, use palette"00"
+  0x2F, // delimiter
+  0x80, // Single color erase mode, use palette "00"
+};
 
-/*  NOTE : code for the msg table is disabled.  I have originally intended
- *  to a build a table that would be compiled in but then opted to just
- *  reference the ROM code instead. */
+const uint8_t msg_3713[] = { //36a5 Table Entry 0
+/*3713*/    0xd4, 0x83, // Screen location
+/*3715*/    'H', 'I', 'G', 'H', '@', 'S', 'C', 'O', 'R', 'E', 
+/*371f*/    0x2f, // delimiter
+/*3720*/    0x8f, // single color draw mode, use palette "0f"
+/*3721*/    0x2f, // delimiter
+/*3722*/    0x80, // Single color erase mode, use palette "00"
+};
 
-#if 0
-    uint8_t *msgTable_36a5[] = 
-    {
-        // 	;; 36a5 Table Entry 0
-        // 3713
-        {
-            0xd4, 0x83,
-            'H','I','G','H','@','S','C','O','R','E',
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
-        // 371f  2f 8f 2f 80
+const uint8_t msg_3723[] = { //36a5 Table Entry 1
+/*3723*/    0x3b, 0x80, // Screen location
+/*3725*/    'C', 'R', 'E', 'D', 'I', 'T', '@', '@', '@', 
+/*372E*/    0x2f, // delimiter
+/*372F*/    0x8f, // single color draw mode, use palette "0f"
+/*3730*/    0x2f, // delimiter
+/*3731*/    0x80, // Single color erase mode, use palette "00"
+};
 
-        // 	;; 36a5 Table Entry 1
-        // 3723  3b 80
-        {
-            0x3b, 0x80
-            'C','R','E','D','I','T','@','@','@',
-            0x2f, 0x8f, 0x2f, 0x80
-        },
+const uint8_t msg_3732[] = { //36a5 Table Entry 2
+/*3732*/    0x3b, 0x80, // Screen location
+/*3734*/    'F', 'R', 'E', 'E', '@', 'P', 'L', 'A', 'Y', 
+/*373d*/    0x2f, // End of text
+/*373e*/    0x8f, // single color draw mode, use palette "0f"
+/*373f*/    0x2f, // delimiter
+/*3740*/    0x80, // Single color erase mode, use palette "00"
+};
 
-        // 	;; 36a5 Table Entry 2
-        // 3732  3b 80
-        {
-            0x3b, 0x80
-            'F','R','E','E','@','P','L','A','Y', 
-            0x2f, 0x8f, 0x2f, 0x80
-        },
+const uint8_t msg_3741[] = { //36a5 Table Entry 3
+/*3741*/    0x8c, 0x02, // Screen location
+/*3743*/    'P', 'L', 'A', 'Y', 'E', 'R', '@', 'O', 'N', 'E', 
+/*374d*/    0x2f, // delimiter
+/*374e*/    0x85, // single color draw mode, use palette "05"
+/*374f*/    0x2f, // delimiter
+/*3750*/    0x10, 0x10, 0x1a, 0x1a, 0x1a, 0x1a, 0x1a, 0x1a, 0x10, 0x10, // Multi color erase mode, first byte high bit not set
+/* 
+ * When "PLAYER ONE" is erased from the screen during the game's start sequence, 
+ * it is positioned over a section of the maze or background that isn't just a solid black void. 
+ * Those 10 bytes (0x10 and 0x1A) perfectly restore the original background palette of the 10 
+ * specific screen tiles that the letters were covering!
+ * However this is actually an overkill because the tiles are already transparant.... Just single mode suffices.
+ */
+};
 
-        // 	;; 36a5 Table Entry 3
-        // 3741  8c 02
-        {
-            0x8c, 0x02
-            'P','L','A','Y','E','R','@','O','N','E', 
-            0x2f, 0x85, 
-            0x2f, 0x10, 0x10, 0x1a, 0x1a, 0x1a, 0x1a, 0x1a, 0x1a, 0x10, 0x10
-        },
+const uint8_t msg_375a[] = { //36a5 Table Entry 4
+/*375a*/    0x8c, 0x02, // Screen location
+/*375c*/    'P', 'L', 'A', 'Y', 'E', 'R', '@', 'T', 'W', 'O', 
+/*3766*/    0x2f, // delimiter
+/*3757*/    0x85, // single color draw mode, use palette "05"
+/*3758*/    0x2f, // delimiter
+/*3769*/    0x80, // Single color erase mode, use palette "00"
+};
 
-        // 	;; 36a5 Table Entry 4
-        // 375a  8c 02
-        {
-            0x8c, 0x02
-            'P','L','A','Y','E','R','@','T','W','O',
-            0x2f, 0x85, 0x2f, 0x80
-        },
+const uint8_t msg_376a[] = { //36a5 Table Entry 5
+/*376a*/    0x92, 0x02, // Screen location
+/*376c*/    'G', 'A', 'M', 'E', '@', '@', 'O', 'V', 'E', 'R', 
+/*3776*/    0x2f, // delimiter
+/*3777*/    0x81, // single color draw mode, use palette "01"
+/*3778*/    0x2f, // delimiter
+/*3779*/    0x80, // Single color mode, restore "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 5
-        // 376a  92 02
-        {
-            0x92, 0x02
-            'G','A','M','E','@','@','O','V','E','R',
-            0x2f, 0x81, 0x2f, 0x80
-        },
+const uint8_t msg_377a[] = { //36a5 Table Entry 6
+/*377a*/    0x52, 0x02, // Screen location
+/*377c*/    'R', 'E', 'A', 'D', 'Y', '[', 
+/*3782*/    0x2f, // delimiter
+/*3783*/    0x89, // single color draw mode, use palette "09"
+/*3784*/    0x2f, // delimiter
+/*3785*/    0x90, // Single color erse mode, use "palette "10"
+};
 
-        // 	;; 36a5 Table Entry 6
-        // 377a  52 02
-        {
-            0x52, 0x02
-            'R','E','A','D','Y','?', 
-            0x2f, 0x89, 0x2f, 0x90
-        },
+const uint8_t msg_3786[] = { //36a5 Table Entry 7
+/*3786*/    0xee, 0x02, // Screen location
+/*3788*/    'P', 'U', 'S', 'H', '@', 'S', 'T', 'A', 'R', 'T', '@', 'B', 'U', 'T', 'T', 'O', 'N', 
+/*3799*/    0x2f, // delimiter
+/*379a*/    0x87, // single color draw mode, use palette "07"
+/*379b*/    0x2f, // delimiter
+/*379c*/    0x80, // Single color erase mode, yse "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 7
-        // 3786  ee 02
-        {
-            0xee, 0x02
-            'P','U','S','H','@','S','T','A','R','T','@',
-            'B','U','T','T','O','N',
-            0x2f, 0x87, 0x2f, 0x80
-        },
+const uint8_t msg_379d[] = { //36a5 Table Entry 8
+/*379d*/    0xb2, 0x02, // Screen location
+/*379f*/    '1', '@', 'P', 'L', 'A', 'Y', 'E', 'R', '@', 'O', 'N', 'L', 'Y', '@', 
+/*37ad*/    0x2f, // delimiter
+/*37ae*/    0x85, // single color draw mode, use palette "05"
+/*37af*/    0x2f, // delimiter
+/*37b0*/    0x80, // Single color erase mode, yse "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 8
-        // 379d  b2 02
-        {
-            0xb2, 0x02
-            "1@PLAYER@ONLY "
-            0x2f, 0x85, 0x2f, 0x80
-        },
+const uint8_t msg_37b1[] = { //36a5 Table Entry 9
+/*37b1*/    0xb2, 0x02, // Screen location
+/*37b3*/    '1', '@', 'O', 'R', '@', '2', '@', 'P', 'L', 'A', 'Y', 'E', 'R', 'S', 
+/*37c1*/    0x2f, // delimiter
+/*37c2*/    0x85, 0x00, // single color draw mode, use palette "05" + typo
+/*37c4*/    0x2f, // delimiter
+/*37c5*/    0x00, 0x80, 0x00 // Multi color erase mode, use palette starting at 37c5!!
+/*
+ * Error, possibly with limited impact, because the erase of this message
+ * is never called. Need to check!!
+ * If the game ever tries to erase "1 OR 2 PLAYERS", this typo causes 
+ * the cpir search loop to write wrong palette colors for length of 
+ * original text message.
+ */
+};
 
-        // 	;; 36a5 Table Entry 9
-        // 37b1  b2 02
-        {
-            0xb2, 0x02
-            "1@OR@2@PLAYERS"
-            0x2f, 0x85, 0x00, 0x2f 00 80
-        },
+const uint8_t msg_37c8[] = { //not used in 36a5_Table 
+/*37c8*/    0x96, 0x03, // Screen location
+/*37ca*/    'B', 'O', 'N', 'U', 'S', '@', 'P', 'U', 'C', 'K', 'M', 'A', 'N', '@','F','O','R','@','@','@','0','0','0','@', 0x5d, 0x5e, 0x5f, //pts
+/*37e4*/    0x2f, // delimiter
+/*37e5*/    0x8e, 0x00, // single color draw mode, use palette "0e" + typo
+/*37e7*/    0x2f, // delimiter
+/*37e8*/    0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry ??
-        // 37c7  00 96 03
-        {
-            0x00, 0x96 03
-            "BONUS@PUCKMAN@FOR@@@000@]^_"
-            0x2f, 0x8e, 0x2f, 0x80
-        },
+const uint8_t msg_37e9[] = { //not used in 36a5_Table 
+/*37e9*/   0xba, 0x02, // Screen location
+/*37eb*/   0x5c, '@', 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, '@', '1', '9', '8', '0', //NAMCO  in special characters/font 
+/*37f9*/   0x2f, // delimiter
+/*37fa*/   0x83, // single color draw mode, use palette "03"
+/*37fb*/   0x2f, // delimiter
+/*37fc*/   0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 37e9  ba 02
-        {
-            0xba, 0x02
-            '\\','@','(',')','*','+',',','-','.','@','1','9','8','0', 
-            0x2f, 0x83, 0x2f, 0x80
-        },
+const uint8_t msg_37fd[] = {//36a5 Table entry c
+/*37fd*/   0xc3, 0x02, // Screen location
+/*37ff*/   'C', 'H', 'A', 'R', 'A', 'C', 'T', 'E', 'R', '@', ':', '@', 'N', 'I', 'C', 'K', 'N', 'A', 'M', 'E', 
+/*3813*/   0x2f, // End of text
+/*3814*/   0x8f, // single color draw mode, use palette "0f"
+/*3715*/   0x2f, // delimiter
+/*3716*/   0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry c
-        // 37fd  c3 02
-        {
-            0xc3, 0x02
-            'C','H','A','R','A','C','T','E','R','@','/',
-            '@','N','I','C','K','N','A','M','E',
-            0x2f, 0x8f, 0x2f, 0x80
-        },
+const uint8_t msg_3817[] = {//not used in 36a5_Table 
+/*3817*/  0x65, 0x01, 
+/*3819*/  0x26, 'A', 'K', 'A', 'B', 'E', 'I', 0x26, 
+/*3819*/  0x2f, // delimiter
+/*3819*/  0x81, // single color draw mode, use palette "01"
+/*3819*/  0x2f, // delimiter
+/*3819*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3817  65 01 
-        {
-            0x65, 0x01 
-            '&','A','K','A','B','E','I','&',
-            0x2f, 0x81, 0x2f, 0x80
-        },
+const uint8_t msg_3825[] = {//not used in 36a5_Table 
+/*3825*/  0x45, 0x01, 
+/*3827*/  0x26, 'M', 'A', 'C', 'K', 'Y', 0x26, 
+/*382e*/  0x2f, // delimiter
+/*382f*/  0x81, // single color draw mode, use palette "01"
+/*3830*/  0x2f, // delimiter
+/*3831*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3825  45 01 
-        {
-            0x45, 0x01 
-            '&','M','A','C','K','Y','&',
-            0x2f, 0x81, 0x2f, 0x80
-        },
+const uint8_t msg_3832[] = {//not used in 36a5_Table 
+/*3832*/  0x48, 0x01, 
+/*3834*/  0x26, 'P', 'I', 'N', 'K', 'Y', 0x26, 
+/*383B*/  0x2f, // delimiter
+/*383C*/  0x83, // single color draw mode, use palette "03"
+/*383D*/  0x2f, // delimiter
+/*383E*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3832  48 01 
-        {
-            0x48, 0x01 
-            '&','P','I','N','K','Y','&', 
-            0x2f, 0x83, 0x2f, 0x80
-        },
+const uint8_t msg_383f[] = {//not used in 36a5_Table 
+/*383F*/  0x48, 0x01, 
+/*3841*/  0x26, 'M', 'I', 'C', 'K', 'Y', 0x26, 
+/*3848*/  0x2f, // delimiter
+/*3849*/  0x83, // single color draw mode, use palette "03"
+/*384a*/  0x2f, // delimiter
+/*384b*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 383f  48 01 
-        {
-            0x48, 0x01 
-           '&','M','I','C','K','Y','&', 
-            0x2f, 0x83, 0x2f, 0x80
-        },
+const uint8_t msg_384c[] = { //36a5 Table entry 11
+/*384c*/  0x76, 0x02, // Screen location
+/*384b*/  0x10, '@', '1', '0', '@', ']', '^', '_',  // ". 10 pts"
+/*384b*/  0x2f, // delimiter
+/*3858*/  0x9f, // single color draw mode, use palette "1f"
+/*384b*/  0x2f, // delimiter
+/*3859*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 11
-        // 384c  76 02
-        {
-            0x76, 0x02
-            0x10, '@','1','0','@',']','^','_',
-            0x2f, 0x9f, 0x2f, 0x80
-        },
+const uint8_t msg_385a[] = { //36a5 Table entry 12
+/*385a*/  0x78, 0x02, // Screen location
+/*385c*/  0x14, '@', '5', '0', '@', ']', '^', '_',  // "o 50 pts"
+/*3864*/  0x2f, // delimiter
+/*3865*/  0x9f, // single color draw mode, use palette "1f"
+/*3866*/  0x2f, // delimiter
+/*3867*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 12
-        // 385a  78 02
-        {
-            0x78, 0x02
-        // 385c  14
-            0x14, '@','5','0','@',']','^','_',
-            0x2f, 0x9f, 0x2f, 0x80
-        },
+const uint8_t msg_3868[] = { //not used in 36a5_Table 
+/*3868*/  0x5d, 0x02, 
+/*386a*/  0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, // MAMCO special font 
+/*3871*/  0x2f, // delimiter
+/*3872*/  0x83, // single color draw mode, use palette "03"
+/*3873*/  0x2f, // delimiter
+/*3874*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3868  5d 02
-        {
-            0x5d, 0x02
-            '(',')','*','+',',','-','.', 
-            0x2f, 0x83, 0x2f, 0x80 
-        },
+const uint8_t msg_3875[] = { //not used in 36a5_Table 
+/*3875*/  0xc5, 0x02, 
+/*3887*/  '@', 'O', 'I', 'K', 'A', 'K', 'E', 0x3b, 0x3b, 0x3b, 0x3b, // '@', 'O', 'I', 'K', 'A', 'K', 'E', '-','-','-','-' 
+/*3882*/  0x2f, // delimiter
+/*3883*/  0x81, // single color draw mode, use palette "01"
+/*3884*/  0x2f, // delimiter
+/*3885*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3875  c5 02
-            '@','O','I','K','A','K','E',';',';',';',';', 
-            0x2f, 0x81, 0x2f, 0x80 
-        },
+const uint8_t msg_3886[] = { //not used in 36a5_Table 
+/*3886*/  0xc5, 0x02, 
+/*3888*/  0x40, 'U', 'R', 'C', 'H', 'I', 'N', 0x3b, 0x3b, 0x3b, 0x3b, 0x3b, 
+/*3894*/  0x2f, // delimiter
+/*3895*/  0x81, // single color draw mode, use palette "01"
+/*3896*/  0x2f, // delimiter
+/*3897*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3886  c5 02 
-        {
-            0xc5, 0x02 
-            '@','U','R','C','H','I','N',';',';',';',';',';',
-            0x2f, 0x81, 0x2f, 0x80
-        },
+const uint8_t msg_3898[] = { //not used in 36a5_Table 
+/*3898*/  0xc8, 0x02, 
+/*389a*/  0x40, 'M', 'A', 'C', 'H', 'I', 'B', 'U', 'S', 'E', 0x3b, 0x3b, 
+/*38a6*/  0x2f, // delimiter
+/*38a7*/  0x83, // single color draw mode, use palette "03"
+/*38a8*/  0x2f, // delimiter
+/*38a9*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 3898  c8 02
-            '@','M','A','C','H','I','B','U','S','E',';',';',
-        // 38a6  2f 83 2f 80 
+const uint8_t msg_38aa[] = { //not used in 36a5_Table 
+/*38aa*/  0xc8, 0x02, 
+/*389c*/  0x40, 'R', 'O', 'M', 'P', 0x3b, 0x3b, 0x3b, 0x3b, 0x3b, 0x3b, 0x3b, 
+/*38b8*/  0x2f, // delimiter
+/*38b9*/  0x83, // single color draw mode, use palette "03"
+/*38ba*/  0x2f, // delimiter
+/*38bb*/  0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 38aa  c8 02
-        {
-            0xc8, 0x02
-            '@','B','O','M','P',';',';',';',';',';',';',';',
-            0x2f, 0x83, 0x2f, 0x80
-        },
+const uint8_t msg_38bc[] = {//36a5 Table entry 1b
+/*38bc*/  0x12, 0x02, // Screen location
+/*38be*/  0x81, 0x85,  // "100" using special character fonts
+/*38b0*/  0x2f, // delimiter
+/*38c1*/  0x83, // single color draw mode, use palette "03"
+/*38c2*/  0x2f, // delimiter
+/*38c3*/  0x90, // delimiter
+};
 
-        // 	;; 36a5 Table Entry 21
-        // 38bc  12 02
-        {
-            0x12, 0x02
-            0x81, 0x85,
-            0x2f, 0x83, 0x2f, 0x90
-        },
+const uint8_t msg_38c4[] = {//36a5 Table entry 1c
+/*38c4*/  0x32, 0x02, // Screen location
+/*38c6*/  '@', 0x82, 0x85, '@', // "300" using special character fonts
+/*38ca*/  0x2f, // delimiter
+/*38cb*/  0x83, // single color draw mode, use palette "03"
+/*38cc*/  0x2f, // delimiter
+/*38cd*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 	;; 36a5 Table Entry 22
-        // 38c4  32 02
-        {
-            0x32, 0x02
-            '@', 0x82, 0x85, '@'
-            0x2f, 0x83, 0x2f, 0x90
-        },
+const uint8_t msg_38ce[] = {//36a5 Table entry 1d
+/*38ce*/  0x32, 0x02, // Screen location
+/*38d0*/  '@', 0x83, 0x85, '@', // "500" using special character fonts
+/*38d4*/  0x2f, // delimiter
+/*38d5*/  0x83, // single color draw mode, use palette "03"
+/*38d6*/  0x2f, // delimiter
+/*38d7*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 	;; 36a5 Table Entry 23
-        // 38ce  32 02				; OFFSET 
-        {
-            0x32, 0x02				; OFFSET 
-            '@', 0x83, 0x85, '@'
-            0x2f, 0x83, 0x2f, 0x90 
-        },
+const uint8_t msg_38d8[] = {//36a5 Table entry 1e
+/*38d8*/  0x32, 0x02, // Screen location
+/*38da*/  '@', 0x84, 0x85, '@', // "700" using special character fonts
+/*38de*/  0x2f, // delimiter
+/*38ef*/  0x83, // single color draw mode, use palette "03"
+/*38e0*/  0x2f, // delimiter
+/*38e1*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 	;; 36a5 Table Entry 24
-        // 38d8  32 02
-        {
-            0x32, 0x02
-            '@', 0x84, 0x85, '@'
-            0x2f, 0x83, 0x2f, 0x90 
-        },
+const uint8_t msg_38e2[] = { //36a5 Table entry 1f
+/*38e2*/  0x32, 0x02, // Screen location
+/*38e4*/  '@', 0x86, 0x8d, 0x8e, // "1000" using special character fonts
+/*38e8*/  0x2f, // delimiter
+/*38e9*/  0x83, // single color draw mode, use palette "03"
+/*38ea*/  0x2f, // delimiter
+/*38eb*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 38e2  32 02
-        {
-            0x32, 0x02
-            '@', 0x86, 0x8d, '@'
-            0x2f, 0x83, 0x2f, 0x90 
-        },
+const uint8_t msg_38ec[] = {//36a5 Table entry 20
+/*38ec*/  0x32, 0x02, // Screen location
+/*38ee*/  0x87, 0x88, 0x8d, 0x8e, // "2000" using special character fonts
+/*38f2*/  0x2f, // delimiter
+/*38f3*/  0x83, // single color draw mode, use palette "03"
+/*38f4*/  0x2f, // delimiter
+/*38f5*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 38ec  32 02
-        {
-            0x32, 0x02
-            0x87, 0x88, 0x8d, 0x8e 
-            0x2f, 0x83, 0x2f, 0x90 
-        },
+const uint8_t msg_38f6[] = { //36a5 Table entry 21
+/*38f6*/  0x32, 0x02, // Screen location
+/*38f8*/  0x89, 0x8a, 0x8d, 0x8e, // "3000" using special character fonts
+/*38fc*/  0x2f, // delimiter
+/*38fd*/  0x83, // single color draw mode, use palette "03"
+/*38fe*/  0x2f, // delimiter
+/*38ff*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 38f6  32 02
-        {
-            0x32, 0x02
-            0x89, 0x8a, 0x8d, 0x8e 
-            0x2f, 0x83, 0x2f, 0x90 
-        },
+const uint8_t msg_3900[] = { //36a5 Table entry 22
+/*3900*/  0x32, 0x02, // Screen location
+/*3902*/  0x8b, 0x8c, 0x8d, 0x8e, // "5000" using special character fonts
+/*3906*/  0x2f, // delimiter
+/*3907*/  0x83, // single color draw mode, use palette "03"
+/*3908*/  0x2f, // delimiter
+/*3909*/  0x90, // Single color erase mode, use "palette "10"
+};
 
-        // 3900  32 02
-        {
-            0x32, 0x02
-            0x8b, 0x8c, 0x8d, 0x8e 
-            0x2f, 0x83, 0x2f, 0x90 
-        },
+const uint8_t msg_390a[] = {//36a5 Table entry 23
+/*390a*/ 0x04, 0x03, // Screen location
+/*390c*/ 'M', 'E', 'M', 'O', 'R', 'Y', '@', '@', 'O', 'K', 
+/*3906*/ 0x2f, // delimiter
+/*3907*/ 0x8f, // single color draw mode, use palette "0f"
+/*3908*/ 0x2f, // delimiter
+/*3909*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 23
-        // 390a  04 03 
-        {
-            0x04, 0x03 
-            'M','E','M','O','R','Y','@','@','O','K', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_391a[] = { //36a5 Table entry 24
+/*391a*/ 0x04, 0x03, // Screen location
+/*391c*/ 'B', 'A', 'D', '@', '@', '@', '@', 'R', '@', 'M', 
+/*3926*/ 0x2f, // delimiter
+/*3927*/ 0x8f, // single color draw mode, use palette "0f"
+/*3928*/ 0x2f, // delimiter
+/*3929*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 24
-        // 391a  04 03 
-        {
-            0x04, 0x03 
-            'B','A','D','@','@','@','@','R','@','M', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
 
-        // 	;; 36a5 Table Entry 26
-        // 392a  08 03 
-        {
-            0x08, 0x03 
-            '1','@','C','O','I','N','@','@','1','@','C','R','E','D',
-            'I','T','@', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_392a[] = {//36a5 Table entry 26
+/*392a*/ 0x08, 0x03, // Screen location
+/*392c*/ '1', '@', 'C', 'O', 'I', 'N', '@', '@', '1', '@', 'C', 'R', 'E', 'D', 'I', 'T', '@', 
+/*393d*/ 0x2f, // delimiter
+/*393e*/ 0x8f, // single color draw mode, use palette "0f"
+/*393f*/ 0x2f, // delimiter
+/*3940*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 28
-        // 3941  08 03 
-        {
-            0x08, 0x03 
-            '2','@','C','O','I','N','S','@','1','@','C','R','E','D',
-            'I','T','@', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_3941[] = {//36a5 Table entry 28
+/*3941*/ 0x08, 0x03, // Screen location
+/*3943*/ '2', '@', 'C', 'O', 'I', 'N', 'S', '@', '1', '@', 'C', 'R', 'E', 'D', 'I', 'T', '@', 
+/*3954*/ 0x2f, // delimiter
+/*3955*/ 0x8f, // single color draw mode, use palette "0f"
+/*3956*/ 0x2f, // delimiter
+/*3957*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 27
-        // 3958  08 03 
-        {
-            0x08, 0x03 
-            '1','@','C','O','I','N','@','@','2','@','C','R','E','D',
-            'I','T','S', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_3958[] = {//36a5 Table entry 27
+/*3958*/ 0x08, 0x03, // Screen location
+/*395a*/ '1', '@', 'C', 'O', 'I', 'N', '@', '@', '2', '@', 'C', 'R', 'E', 'D', 'I', 'T', 'S', 
+/*396b*/ 0x2f, // delimiter
+/*396c*/ 0x8f, // single color draw mode, use palette "0f"
+/*396d*/ 0x2f, // delimiter
+/*396e*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 25
-        // 396f  08 03 
-        {
-            0x08, 0x03 
-            'F','R','E','E','@','@','P','L','A','Y','@','@','@','@',
-            '@','@','@', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_396f[] = {//36a5 Table entry 25
+/*396f*/ 0x08, 0x03, // Screen location
+/*3971*/ 'F', 'R', 'E', 'E', '@', '@', 'P', 'L', 'A', 'Y', '@', '@', '@', '@', '@', '@', '@', 
+/*3982*/ 0x2f, // delimiter
+/*3983*/ 0x8f, // single color draw mode, use palette "0f"
+/*3984*/ 0x2f, // delimiter
+/*3985*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 2a
-        // 3986  0a 03 
-        {
-            0x0a, 0x03 
-            'B','O','N','U','S','@','@','N','O','N','E', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_3986[] = {//36a5 Table entry 2a
+/*3986*/ 0x0a, 0x03, // Screen location
+/*3988*/ 'B', 'O', 'N', 'U', 'S', '@', '@', 'N', 'O', 'N', 'E', 
+/*3993*/ 0x2f, // delimiter
+/*3994*/ 0x8f, // single color draw mode, use palette "0f"
+/*3995*/ 0x2f, // delimiter
+/*3996*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 2b
-        // 3997  0a 03 
-        {
-            0x0a, 0x03 
-            'B','O','N','U','S','@', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_3997[] = {//36a5 Table entry 2b
+/*3997*/ 0x0a, 0x03, // Screen location
+/*3999*/ 'B', 'O', 'N', 'U', 'S', '@', 
+/*399f*/ 0x2f, // delimiter
+/*39a0*/ 0x8f, // single color draw mode, use palette "0f"
+/*39a1*/ 0x2f, // delimiter
+/*39a2*/ 0x80,  // Single color erase mode, use "palette "00"
+};
 
-        // 39a3  0c 03 
-        {
-            0x0c, 0x03 
-            'P','U','C','K','M','A','N', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_39a3[] = {//not used in 36a5_Table 
+/*39a3*/ 0x0c, 0x03, // Screen location 
+/*39a5*/ 'P', 'U', 'C', 'K', 'M', 'A', 'N',  
+/*39ac*/ 0x2f,  // End of text
+/*39ad*/ 0x8f, // single color draw mode, use palette "0f"
+/*39ae*/ 0x2f, // delimiter
+/*39af*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 2c
-        // 39b0  0e 03
-        {
-            0x0e, 0x03
-            'T','A','B','L','E','@','@', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_39b0[] = {//36a5 Table entry 2c
+/*39b0*/ 0x0e, 0x03, // Screen location
+/*39b2*/ 'T', 'A', 'B', 'L', 'E', '@', '@', 
+/*39b9*/ 0x2f, // delimiter
+/*39ba*/ 0x8f, // single color draw mode, use palette "0f"
+/*39bc*/ 0x2f, // delimiter
+/*39bd*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 2d
-        // 39bd  0e 03
-        {
-            0x0e, 0x03
-            'U','P','R','I','G','H','T', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_39bd[] = {//36a5 Table entry 2d
+/*39bd*/ 0x0e, 0x03, // Screen location
+/*39bf*/ 'U', 'P', 'R', 'I', 'G', 'H', 'T', 
+/*39c6*/ 0x2f, // delimiter
+/*39c7*/ 0x8f, // single color draw mode, use palette "0f"
+/*39c8*/ 0x2f, // delimiter
+/*39c9*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry 2e
-        // 39ca  0a 02 
-        {
-            0x0a, 0x02 
-            '0','0','0', 
-            0x2f, 0x8f, 0x2f, 0x80 
-        },
+const uint8_t msg_39ca[] = {//36a5 Table entry 2e
+/*39ca*/ 0x0a, 0x02, // Screen location
+/*39cc*/ '0', '0', '0', 
+/*39cf*/ 0x2f, // delimiter
+/*39d0*/ 0x8f, // single color draw mode, use palette "0f"
+/*39d1*/ 0x2f, // delimiter
+/*39d2*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-        // 	;; 36a5 Table Entry
-        // 39d3  6b 01 
-        {
-            0x6b, 0x01 
-            '&','A','O','S','U','K','E','&', 
-            0x2f, 0x85, 0x2f, 0x80 
-        },
-
-        // 39e1  4b 01
-        {
-            0x4b, 0x01
-            '&','M','U','C','K','Y','&', 
-            0x2f, 0x85, 0x2f, 0x80 
-        },
-        // 39ee  6e 01
-        {
-            0x6e, 0x01
-            '&','G','U','Z','U','T','A','&', 
-            0x2f, 0x87, 0x2f, 0x80 
-        },
-
-        // 39fc  4e 01
-        {
-            0x4e, 0x01
-            '&','M','O','C','K','Y','&', 
-            0x2f, 0x87, 0x2f, 0x80 
-        },
-
-        // 3a09  cb 02
-        {
-            0xcb, 0x02
-            '@','K','I','M','A','G','U','R','E',';',';', 
-            0x2f, 0x85, 0x2f, 0x80 
-        },
-
-        // 3a1a  cb 02
-        {
-            0xcb, 0x02
-            '@','S','T','Y','L','I','S','T',';',';',';',';', 
-            0x2f, 0x85, 0x2f, 0x80 
-        },
-
-        // 3a2c  ce 02
-        {
-            0xce, 0x02
-            '@','O','T','O','B','O','K','E',';',';',';', 
-            0x2f, 0x87, 0x2f, 0x80 
-        },
-
-        // 3a3d  ce 02
-        {
-            0xce, 0x02
-            '@','C','R','Y','B','A','B','Y',';',';',';',';', 
-            0x2f, 0x87, 0x2f, 0x80 
-        },
-#endif
+const uint8_t msg_39d3[] = {//not used in 36a5_Table 
+/*39d3*/ 0x6b, 0x01, // Screen location
+/*39d5*/ 0x26, 'A', 'O', 'S', 'U', 'K', 'E', 0x26, 
+/*39dd*/ 0x2f, // delimiter
+/*39de*/ 0x85, // single color draw mode, use palette "05"
+/*39df*/ 0x2f, // delimiter
+/*39e0*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_39e1[] = { //not used in 36a5_Table 
+/*39e1*/ 0x4b, 0x01, // Screen location
+/*39e3*/ 0x26, 'M', 'U', 'C', 'K', 'Y', 0x26, 
+/*39ea*/ 0x2f, // delimiter
+/*39eb*/ 0x85, // single color draw mode, use palette "05"
+/*39ec*/ 0x2f, // delimiter
+/*39ed*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_39ee[] = { //not used in 36a5_Table 
+/*39ee*/ 0x6e, 0x01, // Screen location
+/*39f0*/ 0x26, 'G', 'U', 'Z', 'U', 'T', 'A', 0x26, 
+/*39f8*/ 0x2f, // delimiter
+/*39f9*/ 0x87, // single color draw mode, use palette "07"
+/*39fa*/ 0x2f, // delimiter
+/*39fb*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_39fc[] = { //not used in 36a5_Table 
+/*39fc*/ 0x4e, 0x01, // Screen location
+/*39fe*/ 0x26, 'M', 'O', 'C', 'K', 'Y', 0x26, 
+/*3a05*/ 0x2f, // delimiter
+/*3a06*/ 0x87, // single color draw mode, use palette "07"
+/*3a07*/ 0x2f, // delimiter
+/*3a08*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3a09[] = { //not used in 36a5_Table 
+/*3a09*/ 0xcb, 0x02, // Screen location
+/*3a0b*/ '@', 'K', 'I', 'M', 'A', 'G', 'U', 'R', 'E', 0x3b, 0x3b, 
+/*3a16*/ 0x2f, // delimiter
+/*3a17*/ 0x85, // single color draw mode, use palette "05"
+/*3a18*/ 0x2f, // delimiter
+/*3a19*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3a1a[] = { //not used in 36a5_Table 
+/*3a1a*/ 0xcb, 0x02, // Screen location
+/*3a1c*/ '@', 'S', 'T', 'Y', 'L', 'I', 'S', 'T', 0x3b, 0x3b, 0x3b, 0x3b, 
+/*3a28*/ 0x2f, // delimiter
+/*3a29*/ 0x85, // single color draw mode, use palette "05"
+/*3a2a*/ 0x2f, // delimiter
+/*3a2b*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3a2c[] = { //not used in 36a5_Table 
+/*3a2c*/ 0xce, 0x02, // Screen location
+/*3a2e*/ '@', 'O', 'T', 'O', 'B', 'O', 'K', 'E', 0x3b, 0x3b, 0x3b, 
+/*3a39*/ 0x2f, // delimiter
+/*3a3a*/ 0x87, // single color draw mode, use palette "07"
+/*3a3b*/ 0x2f, // delimiter
+/*3a3c*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3a3d[] = { //not used in 36a5_Table 
+/*3a3d*/ 0xce, 0x02, // Screen location
+/*3a3f*/ '@', 'C', 'R', 'Y', 'B', 'A', 'B', 'Y', 0x3b, 0x3b, 0x3b, 0x3b, 
+/*3a4b*/ 0x2f, // delimiter
+/*3a4c*/ 0x87, // single color draw mode, use palette "07"
+/*3a4d*/ 0x2f, // delimiter
+/*3a4e*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
 /*  Apparently this is the data for the "made by namco" easter egg.  The
  *  data draws the msg using the same format as the maze draw */
@@ -15703,172 +15801,188 @@ void madeByNamco_3af4(void) {
 // 3cde  00
 // 3cdf  00
 // 3ce0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
+// 3cf0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00
 //-------------------------------
 
-#if 0
-    // 	;; 36a5 Table Entry a
-    // 3d00  96 03
-    {
-        0x96, 0x03
-        'B','O','N','U','S','@','P','A','C',';','M','A','N','@','F',
-        'O','R','@','@','@','0','0','0','@',']','^','_', 
-        0x2f, 0x8e, 0x2f, 0x80
-    },
 
-    // 	;; 36a5 Table Entry b
-    // 3d21  3a 03
-    {
-        0x3a, 0x03
-        0x5c,'@','1','9','8','0','@','M','I','D','W','A','Y','@',
-        'M','F','G','%','C','O','%', 
-        0x2f, 0x83, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 13
-    // 3d3c  3d 03 
-    {
-        0x3d, 0x03 
-        0x5c,'@','1','9','8','0','@','M','I','D','W','A','Y','@',
-        'M','F','G','%','C','O','%',
-        0x2f, 0x83, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 14
-    // 3d57  c5 02 
-    {
-        0xc5, 0x02 
-        ';','S','H','A','D','O','W','@','@','@',
-        0x2f, 0x81, 0x2f, 0x80
-    },
+const uint8_t msg_3d00[] = {  // msgTable_36a5 entry 0x0a
+/*3d00*/ 0x96, 0x03, // Screen location
+/*3d02*/ 'B', 'O', 'N', 'U', 'S', '@', 'P', 'A', 'C', ';', 'M', 'A', 'N', '@', 'F', 'O', 'R', '@', '@', '@', '0', '0', '0', '@', ']', '^', '_', 
+/*3d1d*/ 0x2f, // delimiter
+/*3d1e*/ 0x8e, // single color draw mode, use palette "0e"
+/*3d1f*/ 0x2f, // delimiter
+/*3d20*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
-    // 	;; 36a5 Table Entry d
-    // 3d67  65 01 
-    {
-        0x65, 0x01 
-        '&','B','L','I','N','K','Y','&','@', 
-        0x2f, 0x81, 0x2f, 0x80 
-    },
-    // 
-    // 	;; 36a5 Table Entry 16
-    // 3d76  c8 02
-    {
-        0xc8, 0x02
-        ';','S','P','E','E','D','Y','@','@','@', 
-        0x2f, 0x83, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry f
-    // 3d86  68 01 
-    {
-        0x68, 0x01 
-        '&','P','I','N','K','Y','&','@','@', 
-        0x2f, 0x83, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 33
-    // 3d95  cb 02 
-    {
-        0xcb, 0x02 
-        ';','B','A','S','H','F','U','L','@','@', 
-        0x2f, 0x85, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 2f
-    // 3da5  6b 01 
-    {
-        0x6b, 0x01 
-        '&','I','N','K','Y','&','@','@','@', 
-        0x2f, 0x85, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 35
-    // 3db4  ce 02 
-    {
-        0xce, 0x02 
-        ';','P','O','K','E','Y','@','@','@','@', 
-        0x2f, 0x87, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 31
-    // 3dc4  6e 01
-    {
-        0x6e, 0x01
-        '&','C','L','Y','D','E','&','@','@', 
-        0x2f, 0x87, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 15
-    // 3dd3  c5 02
-    {
-        0xc5, 0x02
-        ';','A','A','A','A','A','A','A','A',';', 
-        0x2f, 0x81, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry e
-    // 3de3  65 01
-    {
-        0x65, 0x01
-        '&','B','B','B','B','B','B','B','&', 
-        0x2f, 0x81, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 17
-    // 3df2  c8 02
-    {
-        0xc8, 0x02
-        ';','C','C','C','C','C','C','C','C',';', 
-        0x2f, 0x83, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 10
-    // 3e02  68 01 
-    {
-        0x68, 0x01 
-        '&','D','D','D','D','D','D','D','&', 
-        0x2f, 0x83, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 34
-    // 3e11  cb 02 
-    {
-        0xcb, 0x02 
-        ';','E','E','E','E','E','E','E','E',';', 
-        0x2f, 0x85, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 30
-    // 3e21  6b 01
-    {
-        0x6b, 0x01
-        '&','F','F','F','F','F','F','F','&', 
-        0x2f, 0x85, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 36
-    // 3e30  ce 02
-    {
-        0xce, 0x02
-        ';','G','G','G','G','G','G','G','G',';', 
-        0x2f, 0x87, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 32
-    // 3e40  6e 01
-    {
-        0x6e, 0x01
-        '&','H','H','H','H','H','H','H','&', 
-        0x2f, 0x87, 0x2f, 0x80
-    },
-    // 
-    // 	;; 36a5 Table Entry 29
-    // 3e4f  0c 03
-    {
-        0x0c, 0x03
-        'P','A','C',';','M','A','N', 
-        0x2f, 0x8f, 0x2f, 0x80
-    },
-#endif
+const uint8_t msg_3d21[] = {  // msgTable_36a5 entry 0x0b
+/*3d21*/ 0x3a, 0x03, // Screen location
+/*3d23*/ 0x5c, '@', '1', '9', '8', '0', '@', 'M', 'I', 'D', 'W', 'A', 'Y', '@', 'M', 'F', 'G', '%', 'C', 'O', '%', 
+/*3d38*/ 0x2f, // delimiter
+/*3d39*/ 0x83, // single color draw mode, use palette "03"
+/*3d3a*/ 0x2f, // delimiter
+/*3d3b*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3d3c[] = {   // msgTable_36a5 entry 0x13
+/*3d3c*/ 0x3d, 0x03, // Screen location
+/*3d3e*/ 0x5c, '@', '1', '9', '8', '0', '@', 'M', 'I', 'D', 'W', 'A', 'Y', '@', 'M', 'F', 'G', '%', 'C', 'O', '%', 
+/*3d43*/ 0x2f, // delimiter
+/*3d54*/ 0x83, // single color draw mode, use palette "03"
+/*3d55*/ 0x2f, // delimiter
+/*3d56*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3d57[] = { // msgTable_36a5 entry 0x14
+/*3d57*/ 0xc5, 0x02, // Screen location
+/*3d59*/ ';', 'S', 'H', 'A', 'D', 'O', 'W', '@', '@', '@', 
+/*3d63*/ 0x2f, // delimiter
+/*3d64*/ 0x81, // single color draw mode, use palette "01"
+/*3d65*/ 0x2f, // delimiter
+/*3d66*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+
+const uint8_t msg_3d67[] = { // msgTable_36a5 entry 0x0d
+/*3d67*/ 0x65, 0x01, // Screen location
+/*3d69*/ '&', 'B', 'L', 'I', 'N', 'K', 'Y', '&', '@', 
+/*3d72*/ 0x2f, // delimiter
+/*3d73*/ 0x81, // single color draw mode, use palette "01"
+/*3d74*/ 0x2f, // delimiter
+/*3d75*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3d76[] = { // msgTable_36a5 entry 0x16
+/*3d76*/ 0xc8, 0x02, // Screen location
+/*3d78*/ ';', 'S', 'P', 'E', 'E', 'D', 'Y', '@', '@', '@', 
+/*3d82*/ 0x2f, // delimiter
+/*3d83*/ 0x83, // single color draw mode, use palette "03"
+/*3d84*/ 0x2f, // delimiter
+/*3d85*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3d86[] = { // msgTable_36a5 entry 0x0f
+/*3d86*/ 0x68, 0x01, // Screen location
+/*3d88*/ '&', 'P', 'I', 'N', 'K', 'Y', '&', '@', '@', 
+/*3d91*/ 0x2f, // delimiter
+/*3d92*/ 0x83, // single color draw mode, use palette "03"
+/*3d93*/ 0x2f, // delimiter
+/*3d94*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3d95[] = { // msgTable_36a5 entry 0x33
+/*3d95*/ 0xcb, 0x02, // Screen location
+/*3d97*/ ';', 'B', 'A', 'S', 'H', 'F', 'U', 'L', '@', '@', 
+/*3da1*/ 0x2f, // delimiter
+/*3da2*/ 0x85, // single color draw mode, use palette "05"
+/*3da3*/ 0x2f, // delimiter
+/*3da4*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3da5[] = { // msgTable_36a5 entry 0x2f
+/*3da5*/ 0x6b, 0x01, // Screen location
+/*3da7*/ '&', 'I', 'N', 'K', 'Y', '&', '@', '@', '@', 
+/*3db0*/ 0x2f, // delimiter
+/*3db1*/ 0x85, // single color draw mode, use palette "05"
+/*3db2*/ 0x2f, // delimiter
+/*3db3*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3db4[] = {// msgTable_36a5 entry 0x35
+/*3db4*/ 0xce, 0x02, // Screen location
+/*3db6*/ ';', 'P', 'O', 'K', 'E', 'Y', '@', '@', '@', '@', 
+/*3dc0*/ 0x2f, // delimiter
+/*3dc1*/ 0x87, // single color draw mode, use palette "07"
+/*3dc2*/ 0x2f, // delimiter
+/*3dc3*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3dc4[] = { // msgTable_36a5 entry 0x31
+/*3dc4*/ 0x6e, 0x01, // Screen location
+/*3dc6*/ '&', 'C', 'L', 'Y', 'D', 'E', '&', '@', '@', 
+/*3dcf*/ 0x2f, // delimiter
+/*3dd0*/ 0x87, // single color draw mode, use palette "07"
+/*3dd1*/ 0x2f, // delimiter
+/*3dd2*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3dd3[] = {// msgTable_36a5 entry 0x15
+/*3dd3*/ 0xc5, 0x02, // Screen location
+/*3dd5*/ ';', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', ';', 
+/*3ddf*/ 0x2f, // delimiter
+/*3de0*/ 0x81, // single color draw mode, use palette "01"
+/*3de1*/ 0x2f, // delimiter
+/*3de2*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3de3[] = {// msgTable_36a5 entry 0x0e
+/*3de3*/ 0x65, 0x01, // Screen location
+/*3de5*/ '&', 'B', 'B', 'B', 'B', 'B', 'B', 'B', '&', 
+/*3dee*/ 0x2f, // delimiter
+/*3def*/ 0x81, // single color draw mode, use palette "01"
+/*3df0*/ 0x2f, // delimiter
+/*3df1*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3df2[] = {// msgTable_36a5 entry 0x17
+/*3df2*/ 0xc8, 0x02, // Screen location
+/*3df4*/ ';', 'C', 'C', 'C', 'C', 'C', 'C', 'C', 'C', ';', 
+/*3dfe*/ 0x2f, // delimiter
+/*3dff*/ 0x83, // single color draw mode, use palette "03"
+/*3e00*/ 0x2f, // delimiter
+/*3e01*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+
+const uint8_t msg_3e02[] = {// msgTable_36a5 entry 0x10
+/*3e02*/ 0x68, 0x01, // Screen location
+/*3e04*/ '&', 'D', 'D', 'D', 'D', 'D', 'D', 'D', '&', 
+/*3e0d*/ 0x2f, // delimiter
+/*3e0e*/ 0x83, // single color draw mode, use palette "03"
+/*3e0f*/ 0x2f, // delimiter
+/*3e10*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3e11[] = {// msgTable_36a5 entry 0x34
+/*3e11*/ 0xcb, 0x02, // Screen location
+/*3e13*/ ';', 'E', 'E', 'E', 'E', 'E', 'E', 'E', 'E', ';', 
+/*3e1d*/ 0x2f, // delimiter
+/*3e1e*/ 0x85, // single color draw mode, use palette "05"
+/*3e1f*/ 0x2f, // delimiter
+/*3e20*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3e21[] = {// msgTable_36a5 entry 0x30
+/*3e21*/ 0x6b, 0x01, // Screen location
+/*3e23*/ '&', 'F', 'F', 'F', 'F', 'F', 'F', 'F', '&', 
+/*3e2c*/ 0x2f, // delimiter
+/*3e2d*/ 0x85, // single color draw mode, use palette "05"
+/*3e2e*/ 0x2f, // delimiter
+/*3e2f*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3e30[] = { // msgTable_36a5 entry 0x36
+/*3e30*/ 0xce, 0x02, // Screen location
+/*3e32*/ ';', 'G', 'G', 'G', 'G', 'G', 'G', 'G', 'G', ';', 
+/*3e3c*/ 0x2f, // End of text
+/*3e3d*/ 0x87, // single color draw mode, use palette "07"
+/*3e3e*/ 0x2f, // delimiter
+/*3e3f*/ 0x80, // Single color erase mode, use "palette "00"
+};
+
+const uint8_t msg_3e40[] = { // msgTable_36a5 entry 0x32
+/*3e40*/ 0x6e, 0x01, // Screen location
+/*3e42*/ '&', 'H', 'H', 'H', 'H', 'H', 'H', 'H', '&', 
+/*3e4b*/ 0x2f, // delimiter
+/*3e4c*/ 0x87, // single color draw mode, use palette "07"
+/*3e4d*/ 0x2f, // delimiter
+/*3e4e*/ 0x80, // Single color erase mode, use "palette "00"
+};
+const uint8_t msg_3e4f[] = {// msgTable_36a5 entry 0x29
+/*3e4f*/ 0x0c, 0x03, // Screen location
+/*3e51*/ 'P', 'A', 'C', ';', 'M', 'A', 'N', 
+/*3e58*/ 0x2f, // delimiter
+/*3e59*/ 0x8f, // single color draw mode, use palette "0f"
+/*3e5a*/ 0x2f, // delimiter
+/*3e5b*/ 0x80, // Single color erase mode, use "palette "00"
+};
 
 //-------------------------------
 // 3e5c                                       00 00 00 00
