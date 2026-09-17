@@ -14586,7 +14586,7 @@ void serviceModeOrStartGame_3174(void) {
   // 3253  31e23a    ld      sp,#3ae2
   // 3256  0603      ld      b,#03
   //-------------------------------
-  uint16_t *stackData = DATA_3ae2;
+  uint16_t *stackData = (uint16_t *)STACK_DATA_SERVICEMODE_TESTS;
   for (uint8_t b = 0; b < 3; b++) {
     //-------------------------------
     // 3258  d9        exx
@@ -14595,7 +14595,20 @@ void serviceModeOrStartGame_3174(void) {
     //-------------------------------
     uint16_t hl = *stackData++ - 0x4000; // 0x4002 in ROM which is video
     uint16_t de = *stackData++;
-    do {
+
+/*  Test stack used in 325d */
+//-------------------------------
+// 3ae2:  0x02, 0x40,
+// 3ae4:  0x01, 0x3e,
+// 3ae6:  0x3d, 0x10,
+// 3ae8:  0x40, 0x40,
+// 3aea:  0x0e, 0x3d,
+// 3aec:  0x3e, 0x10,
+// 3aee:  0xc2, 0x43,
+// 3af0:  0x01, 0x3e,
+// 3ad2:  0x3d, 0x10
+//-------------------------------
+    do {   // display testscreen 
       //-------------------------------
       // 325b  32c050    ld      (#50c0),a
       // 325e  c1        pop     bc
@@ -14603,7 +14616,7 @@ void serviceModeOrStartGame_3174(void) {
       kickWatchdog();
       uint16_t bc = *stackData++;
       printf("%s hl = %4x de=%04x, bc=%04x\n", __func__, hl, de, bc);
-
+    
       // for (int i = 0; i < (bc >> 8); i++)
       for (int i = 0; i < 0x10; i++) {
         //-------------------------------
@@ -14659,7 +14672,7 @@ void serviceModeOrStartGame_3174(void) {
     // 327a  10dc      djnz    #3258           ; (-36)
     //-------------------------------
     stackData++;
-  }
+  };
 
   //-------------------------------
   // 327c  31c04f    ld      sp,#4fc0
@@ -14673,7 +14686,7 @@ void serviceModeOrStartGame_3174(void) {
     delay_32ed();
   }
 
-  do {
+  do { 
     //-------------------------------
     // 3286  32c050    ld      (#50c0),a	; Kick the dog
     //-------------------------------
@@ -14697,7 +14710,7 @@ void serviceModeOrStartGame_3174(void) {
   //-------------------------------
   // 3298  0608      ld      b,#08
   //-------------------------------
-  for (uint8_t b = 0; b < 8; b++) {
+  for (uint8_t b = 0; b < 16; b++) {  //to fast for pc, doubled it
     //-------------------------------
     // 329a  cded32    call    #32ed
     // 329d  10fb      djnz    #329a           ; (-5)
@@ -14709,7 +14722,7 @@ void serviceModeOrStartGame_3174(void) {
   // 32a2  e610      and     #10
   // 32a4  c24b23    jp      nz,#234b
   //-------------------------------
-  if (IN1_SERVICE != 0) {
+  if (IN1_SERVICE) {  //reverse logic, actually not in service
     mainTaskLoop_234b();
     return;
   }
@@ -14718,6 +14731,7 @@ void serviceModeOrStartGame_3174(void) {
   // 32a7  1e01      ld      e,#01
   //-------------------------------
   uint8_t e = 1;
+
   do {
     //-------------------------------
     // 32a9  0604      ld      b,#04
@@ -14749,7 +14763,7 @@ void serviceModeOrStartGame_3174(void) {
         // 32c0  eeff      xor     #ff
         // 32c2  20f3      jr      nz,#32b7        ; (-13)
         //-------------------------------
-      } while (IO_INPUT0 == 0);
+      } while ((IO_INPUT0) != 0xff);
       //-------------------------------
       // 32c4  10e5      djnz    #32ab           ; (-27)
       //-------------------------------
@@ -14794,6 +14808,7 @@ void serviceModeOrStartGame_3174(void) {
   //-------------------------------
   while (IN1_SERVICE == 0) {
     kickWatchdog();
+    interruptHalt();
   }
 
   //-------------------------------
@@ -15631,19 +15646,21 @@ const uint8_t msg_3a3d[] = { //not used in 36a5_Table
 // 3ae0  04 00
 //-------------------------------
 
+
+const uint8_t STACK_DATA_SERVICEMODE_TESTS[18]= {
 /*  Test stack used in 325d */
 //-------------------------------
-// 3ae2  02 40
-// 3ae4  01 3e
-// 3ae6  3d 10
-// 3ae8  40 40
-// 3aea  0e 3d
-// 3aec  3e 10
-// 3aee  c2 43
-// 3af0  01 3e
-// 3ad2  3d 10
+/* 3ae2*/  0x02, 0x40,
+/* 3ae4*/  0x01, 0x3e,
+/* 3ae6*/  0x3d, 0x10,
+/* 3ae8*/  0x40, 0x40,
+/* 3aea*/  0x0e, 0x3d,
+/* 3aec*/  0x3e, 0x10,
+/* 3aee*/  0xc2, 0x43,
+/* 3af0*/  0x01, 0x3e,
+/* 3ad2*/  0x3d, 0x10,
 //-------------------------------
-
+};
 /*  draw easter egg */
 void madeByNamco_3af4(void) {
   //-------------------------------

@@ -54,12 +54,14 @@ extern const uint8_t PILLS_DELTA_ADDRESS_ENCODING[240]; // #define DATA_35b5 (&R
 #define SONG_TABLE_CH2_3bcc (&ROM[0x3bcc])
 #define SONG_TABLE_CH3_3bd0 (&ROM[0x3bd0])
 const uint8_t STACK_DATA[24]; //#define DATA_3154 ((uint16_t *)(&ROM[0x3154]))
+const uint8_t STACK_DATA_SERVICEMODE_TESTS[18]; // #define DATA_3ae2 ((uint16_t *)(&ROM[0x3ae2]))
+
 #define BAD_ROM_316c (&ROM[0x316c])
 #define BAD_W_RAM_316e (&ROM[0x316e])
 #define BAD_V_RAM_3170 (&ROM[0x3170])
 #define BAD_C_RAM_3172 (&ROM[0x3172])
 extern const uint8_t BONUS_PACMAN_SCORE[6]; // #define DATA_32f9 (&ROM[0x32f9])
-#define DATA_3ae2 ((uint16_t *)(&ROM[0x3ae2]))
+
 
 extern const uint8_t* msgTable_36a5[55];
 extern const uint8_t msg_3713[];
