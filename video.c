@@ -402,6 +402,7 @@ void glutKeyboardDown(unsigned char key, int x, int y) {
     else if (key == '8') input0 &= ~0x01;
     else if (key == '4') input0 &= ~0x02;
     else if (key == '6') input0 &= ~0x04;
+    else if (key == '9') input1 &= ~0x10;
     else if (key == '2') input0 &= ~0x08;
 }
 
@@ -413,6 +414,7 @@ void glutKeyboardUp(unsigned char key, int x, int y) {
     else if (key == '8') input0 |= 0x01;
     else if (key == '4') input0 |= 0x02;
     else if (key == '6') input0 |= 0x04;
+    else if (key == '9') input1 |= 0x10;
     else if (key == '2') input0 |= 0x08;
 }
 

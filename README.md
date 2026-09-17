@@ -67,6 +67,7 @@ Keys (Windows)
 * **1** = 1 Player Start
 * **2** = 2 Player Start
 * **P** = Pause CPU
+* **9** = Service mode (press and hold during startup)
 * **D** = Toggle Target Vector overlays (visualizing target tiles for Blinky, Pinky, Inky, Clyde, and Pac-Man)
 
 Goals

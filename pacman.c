@@ -9863,6 +9863,12 @@ void scene3State5_22fe(void) {
   LEVEL_STATE++;
 }
 
+/*
+ * Directly called by the reset_0000 interrupt (PowerOn)
+ * So some initial processing:
+ * Disable interrupts and blanks screen.
+ * start   Allow: isr_3000 by VBLANK interrupt. Initial testing.
+ */
 void initSelfTest_230b(void) {
   //-------------------------------
   // 230b  210050    ld      hl,#5000
@@ -9948,8 +9954,9 @@ void initSelfTest_230b(void) {
   // 234a  76        halt			; Wait for interrupt
   //-------------------------------
   interruptEnable();
-  interruptHalt();
-  mainTaskLoop_234b();
+  interruptHalt(); // ==> calls isr_3000() ==> calls ramTest_3042() ==> mainTaskLoop_234b()
+    
+//  mainTaskLoop_234b();  
 }
 
 
@@ -13874,7 +13881,7 @@ void ramTest_3042(void) {
   //-------------------------------
   // 3042  315431    ld      sp,#3154
   //-------------------------------
-  uint16_t *stackData = DATA_3154;
+  uint16_t *stackData = (uint16_t *) STACK_DATA;
   uint8_t a = 0;
   uint16_t de = 0;
   uint8_t testValue = 0;
@@ -14268,6 +14275,7 @@ void badRomOrRamMessage_30fb(int e, int h, uint8_t checksum) {
     // 314d  e610      and     #10
     // 314f  28f6      jr      z,#3147         ; (-10)
     //-------------------------------
+    interruptHalt();
   } while (IN1_SERVICE == 0);
 
   //-------------------------------
@@ -14278,20 +14286,21 @@ void badRomOrRamMessage_30fb(int e, int h, uint8_t checksum) {
 
 /* Stack stuff used in ram test */
 
-//-------------------------------
-// 3154  004c
-// 3156  0f04
-// 3158  004c
-// 315a  f004
-// 315c  0040
-// 315e  0f04
-// 3160  0040
-// 3162  f004
-// 3164  0044
-// 3166  0f04
-// 3168  0044
-// 316a  f004
-//-------------------------------
+const uint8_t STACK_DATA[24]= {
+/* 3154*/  0x00, 0x4c,
+/* 3156*/  0x0f, 0x04,
+/* 3158*/  0x00, 0x4c,
+/* 315a*/  0xf0, 0x04,
+/* 315c*/  0x00, 0x40,
+/* 315e*/  0x0f, 0x04,
+/* 3160*/  0x00, 0x40,
+/* 3162*/  0xf0, 0x04,
+/* 3164*/  0x00, 0x44,
+/* 3166*/  0x0f, 0x04,
+/* 3168*/  0x00, 0x44,
+/* 316a*/  0xf0, 0x04,
+
+};
 
 // 	;; RAM Error data
 //-------------------------------
@@ -14497,14 +14506,14 @@ void serviceModeOrStartGame_3174(void) {
       // 3213  7e        ld      a,(hl)
       // 3214  322a42    ld      (#422a),a
       //-------------------------------
-      SCREEN[0x22a] = DATA_32f9[DIP_SWITCH_BONUS];
+      SCREEN[0x22a] =BONUS_PACMAN_SCORE[DIP_SWITCH_BONUS];
 
       //-------------------------------
       // 3217  23        inc     hl
       // 3218  7e        ld      a,(hl)
       // 3219  324a42    ld      (#424a),a
       //-------------------------------
-      SCREEN[0x24a] = DATA_32f9[DIP_SWITCH_BONUS + 1];
+      SCREEN[0x24a] = BONUS_PACMAN_SCORE[DIP_SWITCH_BONUS + 1];
     }
     //-------------------------------
     // 321c  3a8050    ld      a,(#5080)
@@ -14813,9 +14822,14 @@ void delay_32ed(void) {
 }
 /*  Bonus life points, 10, 15 or 20 (thousand) */
 
-//-------------------------------
-// 32f9  30 31 35 31 30 32
-//-------------------------------
+const uint8_t BONUS_PACMAN_SCORE[6]= {
+/*32f9*/  0x30,  //0
+/*32fa*/  0x31,  //1
+/*32fb*/  0x35,  //5
+/*32fc*/  0x31,  //1
+/*32fd*/  0x30,  //0
+/*32fe*/  0x32   //2
+};
 
 /*  Table of vectors is repeated to allow a loop to count forwards 4 times
  *  from any starting orientation */
